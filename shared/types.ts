@@ -96,7 +96,15 @@ export type Roundtable = {
   followupState?: 'pending' | 'failed';
 };
 export type Visitor = { id: string; displayName: string };
-export type AppConfig = { liveAvailable: boolean; skillVersion: string };
+export type AppConfig = {
+  liveAvailable: boolean;
+  credentialConfigured: boolean;
+  readiness: 'missing-secret' | 'unsupported-model' | 'configured-unverified';
+  skillVersion: string;
+  model: string | null;
+  searchLimit: number;
+  cacheMinutes: number;
+};
 export const contributionLabels: Record<ContributionType, string> = {
   opinion: '观点',
   experience: '亲身经历',

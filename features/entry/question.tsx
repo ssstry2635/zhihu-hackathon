@@ -11,39 +11,33 @@ import {
 } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
-import { api, post } from '@/lib/api';
+import { api } from '@/lib/api';
 import { demoAnalysis, TOPIC_TITLE } from '@/shared/demo';
 import { SourceDialog } from '@/components/source-dialog';
 import type { AppConfig } from '@/shared/types';
+import { jobStageLabels } from '@/shared/jobs';
+import { useEntryJob } from './use-entry-job';
 export default function Question() {
-
   const [config, setConfig] = useState<AppConfig | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [stage, setStage] = useState('');
-  useEffect(() => {
-    api<AppConfig>('/config')
-      .then(setConfig)
-      .catch(() => setConfig(null));
-  }, []);
-  async function start(mode: 'mock' | 'live') {
-    setBusy(true);
-    setError('');
-    setStage(
-      mode === 'live' ? '正在检索知乎材料并整理观点…' : '正在载入预置样本…',
+  const [configError, setConfigError] = useState(false);
+  const entry = useEntryJob();
+  const busy = entry.submitting;
+  const active =
+    entry.job?.status === 'running' || entry.job?.status === 'queued';
+  function loadConfig() {
+    return api<AppConfig>('/config', {
+      signal: AbortSignal.timeout(15000),
+    }).then(
+      (value) => {
+        setConfig(value);
+        setConfigError(false);
+      },
+      () => setConfigError(true),
     );
-    try {
-      const result = await post<{ resultId: string }>(
-        '/topics/ai-coding/analyses',
-        { mode, requestId: crypto.randomUUID() },
-      );
-      window.location.assign('/overview?analysis=' + encodeURIComponent(result.resultId));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '未能完成分析。');
-      setBusy(false);
-      setStage('');
-    }
   }
+  useEffect(() => {
+    void loadConfig();
+  }, []);
   return (
     <AppShell page="question">
       <main className="container">
@@ -102,27 +96,82 @@ export default function Question() {
               <p>把混在一起的观点整理清楚，找到你关心的讨论。</p>
               <Button
                 className="button primary"
-                disabled={busy}
-                onClick={() => start('mock')}
+                disabled={busy || entry.restoring}
+                onClick={entry.openPreset}
               >
                 {busy ? (
                   <LoaderCircle className="spin" />
                 ) : (
                   <>
-                    见山另一面
+                    {active ? '先看预置演示' : '见山另一面'}
                     <ArrowUpRight size={18} />
                   </>
                 )}
               </Button>
-              {stage && (
-                <p role="status" className="small-note">
-                  {stage}
+              {entry.restoring && (
+                <output className="small-note">正在查找上次的采集任务…</output>
+              )}
+              {entry.job && (
+                <section
+                  className="entry-task"
+                  aria-label="采集任务状态"
+                  data-stage={entry.job.stage}
+                  data-status={entry.job.status}
+                >
+                  <output>
+                    <b>
+                      {entry.job.status === 'failed'
+                        ? '本次采集未完成'
+                        : jobStageLabels[entry.job.stage]}
+                    </b>
+                  </output>
+                  <ol className="entry-steps" aria-label="分析步骤">
+                    {(['collecting', 'classifying', 'saving'] as const).map(
+                      (stage) => (
+                        <li
+                          key={stage}
+                          aria-current={
+                            entry.job?.stage === stage ? 'step' : undefined
+                          }
+                        >
+                          {jobStageLabels[stage]}
+                        </li>
+                      ),
+                    )}
+                  </ol>
+                  {active && (
+                    <p className="small-note">
+                      进度来自本次任务。保持页面打开有助于完成采集；刷新后可查询已保存状态。
+                    </p>
+                  )}
+                  {entry.job.status === 'queued' && (
+                    <Button variant="outline" onClick={entry.resume}>
+                      继续这次采集
+                    </Button>
+                  )}
+                  {entry.job.status === 'succeeded' && entry.job.resultId && (
+                    <Button
+                      onClick={() => entry.openResult(entry.job!.resultId!)}
+                    >
+                      打开上次分析结果
+                    </Button>
+                  )}
+                  {entry.job.error && (
+                    <p className="inline-error" role="alert">
+                      {entry.job.error.message}
+                    </p>
+                  )}
+                </section>
+              )}
+              {entry.notice && (
+                <p className="inline-error" role="alert">
+                  {entry.notice}
                 </p>
               )}
-              {error && (
-                <p className="inline-error" role="alert">
-                  {error}
-                </p>
+              {entry.lookupFailed && entry.hasJobId && (
+                <Button variant="outline" onClick={entry.refresh}>
+                  重新查询任务状态
+                </Button>
               )}
               <div className="small-note">
                 当前展示团队预置的模拟样本。
@@ -132,14 +181,34 @@ export default function Question() {
               <div className="live-entry">
                 <Button
                   variant="ghost"
-                  disabled={busy || !config?.liveAvailable}
-                  onClick={() => start('live')}
+                  disabled={
+                    busy || entry.restoring || active || !config?.liveAvailable
+                  }
+                  onClick={entry.startLive}
                 >
                   <Radio size={15} /> 使用知乎实时采集 <ArrowRight size={15} />
                 </Button>
-                {!config?.liveAvailable && (
+                {configError ? (
+                  <>
+                    <span>暂时无法确认实时采集是否可用。</span>
+                    <Button variant="ghost" onClick={loadConfig}>
+                      重新检查
+                    </Button>
+                  </>
+                ) : !config ? (
+                  <span>正在检查实时采集是否可用…</span>
+                ) : config.readiness === 'missing-secret' ? (
                   <span>实时采集暂未启用，先从预置演示开始。</span>
+                ) : config.readiness === 'unsupported-model' ? (
+                  <span>实时采集的模型配置需要调整，先体验预置演示。</span>
+                ) : (
+                  <span>服务端已配置凭证，首次采集将检验实际可用性。</span>
                 )}
+                <span>
+                  实时模式检索最多 10
+                  条相关结果及精选评论，不代表本问题全部回答。同一议题 1
+                  小时内复用已保存快照。
+                </span>
               </div>
             </div>
             <div className="note-card">

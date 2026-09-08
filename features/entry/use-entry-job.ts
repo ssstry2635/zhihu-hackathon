@@ -1,0 +1,228 @@
+'use client';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { api, ApiError, post } from '@/lib/api';
+import type { AnalysisJob, AnalysisStart } from '@/shared/jobs';
+const STORAGE_KEY = 'jianshan:analysis-job:v1';
+const readStored = () => {
+  try {
+    return sessionStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+};
+const saveStored = (id: string | null) => {
+  try {
+    if (id) sessionStorage.setItem(STORAGE_KEY, id);
+    else sessionStorage.removeItem(STORAGE_KEY);
+  } catch {}
+};
+const message = (e: unknown) =>
+  e instanceof Error ? e.message : '未能完成操作。';
+export function useEntryJob() {
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [job, setJob] = useState<AnalysisJob | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [restoring, setRestoring] = useState(true);
+  const [notice, setNotice] = useState('');
+  const [lookupFailed, setLookupFailed] = useState(false);
+  const gate = useRef(false);
+  const activeId = useRef<string | null>(null);
+  const autoOpen = useRef(false);
+  const navigating = useRef(false);
+  const openResult = useCallback((id: string) => {
+    if (navigating.current) return;
+    navigating.current = true;
+    saveStored(null);
+    window.location.assign('/overview?analysis=' + encodeURIComponent(id));
+  }, []);
+  const receive = useCallback(
+    (next: AnalysisJob) => {
+      if (activeId.current !== next.id) return;
+      setJob((previous) =>
+        previous &&
+        previous.id === next.id &&
+        previous.updatedAt > next.updatedAt
+          ? previous
+          : next,
+      );
+      setLookupFailed(false);
+      setNotice('');
+      if (next.status === 'succeeded' && next.resultId && autoOpen.current)
+        openResult(next.resultId);
+    },
+    [openResult],
+  );
+  const watch = useCallback((id: string) => {
+    activeId.current = id;
+    saveStored(id);
+    setJobId(id);
+  }, []);
+  const refresh = useCallback(
+    async (id = activeId.current) => {
+      if (!id) return;
+      try {
+        receive(
+          await api<AnalysisJob>('/jobs/' + encodeURIComponent(id), {
+            signal: AbortSignal.timeout(15000),
+          }),
+        );
+      } catch (e) {
+        if (activeId.current !== id) return;
+        setNotice(message(e));
+        setLookupFailed(true);
+        // An unknown ID was never executed by this page; allow the user to start again.
+        if (e instanceof ApiError && e.status === 404) {
+          activeId.current = null;
+          saveStored(null);
+          setJobId(null);
+          setJob(null);
+        }
+      } finally {
+        setRestoring(false);
+      }
+    },
+    [receive],
+  );
+  // Hydrate the external sessionStorage value after SSR so server/client markup agrees.
+  /* eslint-disable react/react-compiler */
+  useEffect(() => {
+    const id = readStored();
+    if (id && /^[a-f0-9-]{36}$/i.test(id)) watch(id);
+    else {
+      saveStored(null);
+      setRestoring(false);
+    }
+  }, [watch]);
+  /* eslint-enable react/react-compiler */
+  useEffect(() => {
+    if (
+      !jobId ||
+      lookupFailed ||
+      job?.status === 'succeeded' ||
+      job?.status === 'failed'
+    )
+      return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      await refresh(jobId);
+      if (!cancelled) timer = setTimeout(poll, 1800);
+    }
+    void poll();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [jobId, lookupFailed, job?.status, refresh]);
+  async function execute(id: string) {
+    autoOpen.current = true;
+    try {
+      receive(
+        await post<AnalysisJob>(
+          '/jobs/' + encodeURIComponent(id) + '/run',
+          {},
+          { signal: AbortSignal.timeout(110000) },
+        ),
+      );
+    } catch {
+      if (activeId.current !== id) return;
+      setNotice(
+        '执行连接已中断，正在查询已保存的任务状态；不会自动重新调用模型。',
+      );
+      await refresh(id);
+    }
+  }
+  async function startLive() {
+    if (
+      gate.current ||
+      restoring ||
+      job?.status === 'queued' ||
+      job?.status === 'running'
+    )
+      return;
+    gate.current = true;
+    setSubmitting(true);
+    setNotice('');
+    setJob(null);
+    setLookupFailed(false);
+    activeId.current = null;
+    setJobId(null);
+    saveStored(null);
+    autoOpen.current = true;
+    try {
+      // Establish the cookie before create/run/status requests can overlap.
+      await api('/visitors/session', { signal: AbortSignal.timeout(15000) });
+      const requestId = crypto.randomUUID();
+      saveStored(requestId);
+      const result = await post<AnalysisStart>(
+        '/topics/ai-coding/analyses',
+        { mode: 'live', requestId },
+        { signal: AbortSignal.timeout(15000) },
+      );
+      if ('resultId' in result) {
+        openResult(result.resultId);
+        return;
+      }
+      watch(result.jobId);
+      receive(result.job);
+      if (result.job.status === 'queued') void execute(result.jobId);
+    } catch (e) {
+      setRestoring(false);
+      setNotice(message(e));
+      const id = readStored();
+      if (
+        id &&
+        e instanceof ApiError &&
+        ['NETWORK_ERROR', 'RESPONSE_INVALID'].includes(e.code)
+      )
+        watch(id);
+      else saveStored(null);
+    } finally {
+      gate.current = false;
+      setSubmitting(false);
+    }
+  }
+  async function openPreset() {
+    if (gate.current) return;
+    gate.current = true;
+    setSubmitting(true);
+    autoOpen.current = false;
+    try {
+      const result = await post<{ resultId: string }>(
+        '/topics/ai-coding/analyses',
+        { mode: 'mock' },
+        { signal: AbortSignal.timeout(15000) },
+      );
+      // Preserve an unfinished live job so returning to the entry can query it.
+      if (!navigating.current) {
+        navigating.current = true;
+        window.location.assign(
+          '/overview?analysis=' + encodeURIComponent(result.resultId),
+        );
+      }
+    } catch (e) {
+      setNotice(message(e));
+    } finally {
+      gate.current = false;
+      setSubmitting(false);
+    }
+  }
+  return {
+    job,
+    hasJobId: Boolean(jobId),
+    submitting,
+    restoring,
+    notice,
+    lookupFailed,
+    startLive,
+    openPreset,
+    openResult,
+    refresh: () => {
+      setLookupFailed(false);
+      void refresh();
+    },
+    resume: () => {
+      if (job?.status === 'queued') void execute(job.id);
+    },
+  };
+}

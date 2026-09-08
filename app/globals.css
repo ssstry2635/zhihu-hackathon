@@ -1543,3 +1543,12 @@ fieldset {
     margin-bottom: 15px;
   }
 }
+
+.entry-task { margin: 18px 0; padding: 16px; border: 1px solid var(--border, #d5dcd5); border-radius: 12px; background: rgba(255,255,255,.6); }
+.entry-task > output:first-child { margin: 0 0 12px; font-size: 14px; }
+.entry-steps { margin: 0 0 12px; padding-left: 22px; font-size: 12px; line-height: 1.8; color: #737d75; }
+.entry-steps li[aria-current='step'] { color: #245847; font-weight: 700; }
+.entry-task[data-status='failed'] { border-color: #c99789; }
+.entry-task .small-note { margin: 10px 0; }
+
+.start-card output { display: block; }

@@ -8,6 +8,7 @@
 
 ```sh
 pnpm install
+pnpm check:config
 pnpm db:migrate
 pnpm dev
 ```
@@ -36,7 +37,9 @@ pnpm dev
 | C · 真人讨论       | `features/discussion/`、`lib/server/forum.ts`、`db/schema.ts`          | 身份、存储、发布回复与点赞     |
 | D · Agent 圆桌     | `features/roundtable/`、`lib/server/roundtable.ts`                     | 角色编排、追问与待解问题       |
 
-`shared/types.ts` 是共同数据契约。`shared/demo.ts` 是唯一预置样本来源。修改 ID、数据字段、数据库结构时先与依赖方同步。UI 公共组件在 `components/`，样式在 `app/globals.css`。
+A 的重点实现、接入步骤、任务接口和队友交接见 [docs/A-HANDOFF.md](docs/A-HANDOFF.md)。
+
+`shared/types.ts` 与 `shared/jobs.ts` 是共同数据契约。`shared/demo.ts` 是唯一预置样本来源。修改 ID、数据字段、数据库结构时先与依赖方同步。UI 公共组件在 `components/`，样式在 `app/globals.css`。
 
 ## 知乎官方接入
 
@@ -57,11 +60,12 @@ pnpm dev
 
 React 19 + TypeScript + Tailwind + Vinext/Vite；服务端运行于 Cloudflare Workers，本地使用同一模拟运行时。数据库为 D1/SQLite，原始 SQL 均使用参数绑定，Drizzle 只管理表结构和迁移。
 
-访客身份由 HttpOnly、SameSite=Lax Cookie 持有，作者 ID 在服务端确定。它是演示访客身份，不是知乎 OAuth 账号。帖子、点赞、圆桌会话和来源快照存在数据库，浏览器 sessionStorage 仅保存未提交草稿。
+访客身份由 HttpOnly、SameSite=Lax Cookie 持有，作者 ID 在服务端确定。它是演示访客身份，不是知乎 OAuth 账号。帖子、点赞、圆桌会话和来源快照存在数据库，浏览器 sessionStorage 保存未提交草稿和用于恢复查询的任务 ID，不保存服务端任务状态。
 
 ```sh
 pnpm typecheck
 pnpm test:contracts
+pnpm test:entry
 pnpm test:smoke
 pnpm build
 ```
@@ -77,7 +81,7 @@ pnpm build
 ## 当前框架与完整 PRD 的差别
 
 - 仅一个预置议题；未做真实浏览器插件、自由搜索入口或知乎 OAuth。
-- 生成接口同步返回结果，页面保持等待；独立异步任务中心是后续增强。
+- 采集任务已持久化，支持立即创建、独立查进度、去重和刷新恢复；执行仍由独立 HTTP 请求承载，持久队列尚未接入。
 - 真实搜索/分类和圆桌适配层已实现，但尚无团队凭证实测。
 - 不自动将新增帖子重新注入模型；通过关联问题和材料列表展示补充。
 - 访客模式用于演示；没有成熟社区的账户恢复、内容治理或通知系统。

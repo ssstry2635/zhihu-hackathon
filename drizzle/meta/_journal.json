@@ -15,6 +15,13 @@
       "when": 1788841695158,
       "tag": "0001_curvy_black_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788857529739,
+      "tag": "0002_easy_nightshade",
+      "breakpoints": true
     }
   ]
 }

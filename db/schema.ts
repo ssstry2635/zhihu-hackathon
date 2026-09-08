@@ -77,3 +77,25 @@ export const cache = sqliteTable('request_cache', {
   key: text('key').primaryKey(),
   resultId: text('result_id').notNull(),
 });
+
+export const analysisJobs = sqliteTable(
+  'analysis_jobs',
+  {
+    id: text('id').primaryKey(),
+    visitorId: text('visitor_id').notNull(),
+    fingerprint: text('fingerprint').notNull(),
+    status: text('status').notNull(),
+    stage: text('stage').notNull(),
+    activeKey: text('active_key'),
+    resultId: text('result_id'),
+    error: text('error'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    expiresAt: text('expires_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('idx_analysis_jobs_active').on(t.activeKey),
+    index('idx_analysis_jobs_cache').on(t.fingerprint, t.status, t.updatedAt),
+    index('idx_analysis_jobs_expiry').on(t.status, t.expiresAt),
+  ],
+);

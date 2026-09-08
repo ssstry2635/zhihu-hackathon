@@ -67,36 +67,39 @@ export function json(data: unknown, status = 200) {
     { status, headers: { 'Cache-Control': 'no-store' } },
   );
 }
-export function fail(error: unknown) {
+export function errorInfo(error: unknown) {
   if (error instanceof AppError)
-    return Response.json(
-      {
-        error: {
-          code: error.code,
-          message: error.message,
-          canUsePreset: [
-            'ZHIHU_UNAVAILABLE',
-            'MODEL_OUTPUT_INVALID',
-            'EMPTY_SOURCES',
-            'LIVE_NOT_CONFIGURED',
-          ].includes(error.code),
-        },
-      },
-      { status: error.status, headers: { 'Cache-Control': 'no-store' } },
+    return {
+      code: error.code,
+      message: error.message,
+      canUsePreset:
+        error.code.startsWith('ZHIHU_') ||
+        [
+          'MODEL_OUTPUT_INVALID',
+          'MODEL_NOT_SUPPORTED',
+          'EMPTY_SOURCES',
+          'LIVE_NOT_CONFIGURED',
+          'JOB_EXPIRED',
+        ].includes(error.code),
+    };
+  return {
+    code: 'INTERNAL_ERROR',
+    message: '暂时无法完成操作，请稍后再试。',
+    canUsePreset: false,
+  };
+}
+export function fail(error: unknown) {
+  if (!(error instanceof AppError))
+    console.error(
+      'Request failed:',
+      error instanceof Error ? error.name : 'unknown',
     );
-  console.error(
-    'Request failed:',
-    error instanceof Error ? error.name : 'unknown',
-  );
   return Response.json(
+    { error: errorInfo(error) },
     {
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: '暂时无法完成操作，请稍后再试。',
-        canUsePreset: false,
-      },
+      status: error instanceof AppError ? error.status : 500,
+      headers: { 'Cache-Control': 'no-store' },
     },
-    { status: 500 },
   );
 }
 export function checkOrigin(request: Request) {

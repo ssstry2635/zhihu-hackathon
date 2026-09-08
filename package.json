@@ -15,7 +15,9 @@
     "typecheck": "tsc --noEmit",
     "test:smoke": "node scripts/smoke-test.mjs",
     "db:migrate": "wrangler d1 migrations apply DB --local --config wrangler.local.json",
-    "test:contracts": "node --experimental-vm-modules scripts/validate-contracts.mjs"
+    "test:contracts": "node --experimental-vm-modules scripts/validate-contracts.mjs",
+    "test:entry": "node --experimental-vm-modules scripts/test-entry.mjs",
+    "check:config": "node scripts/doctor.mjs"
   },
   "dependencies": {
     "react": "19.2.6",

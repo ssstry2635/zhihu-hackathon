@@ -1,9 +1,5 @@
 import { getDb } from '@/db';
-import {
-  ensureDemo,
-  getAnalysis,
-  createLiveAnalysis,
-} from '@/lib/server/analysis';
+import { ensureDemo, getAnalysis } from '@/lib/server/analysis';
 import {
   getPost,
   listPosts,
@@ -13,7 +9,8 @@ import {
   renameVisitor,
 } from '@/lib/server/forum';
 import { startRound, getRound, followup } from '@/lib/server/roundtable';
-import { hasZhihuSecret, SKILL_VERSION } from '@/lib/server/zhihu';
+import { getZhihuConfig } from '@/lib/server/zhihu';
+import { startAnalysis, getJob, runAnalysisJob } from '@/lib/server/jobs';
 import {
   assert,
   body,
@@ -22,7 +19,7 @@ import {
   json,
   stringField,
 } from '@/lib/server/http';
-import { DEMO_ID, TOPIC_TITLE } from '@/shared/demo';
+import { TOPIC_TITLE } from '@/shared/demo';
 export const dynamic = 'force-dynamic';
 async function handle(request: Request) {
   let cookie: string | undefined;
@@ -31,11 +28,7 @@ async function handle(request: Request) {
       url = new URL(request.url),
       path = url.pathname.slice(5).split('/').map(decodeURIComponent);
     if (method !== 'GET') checkOrigin(request);
-    if (method === 'GET' && path[0] === 'config')
-      return json({
-        liveAvailable: hasZhihuSecret(),
-        skillVersion: SKILL_VERSION,
-      });
+    if (method === 'GET' && path[0] === 'config') return json(getZhihuConfig());
     await ensureDemo();
     const session = await visitorFor(request);
     cookie = session.cookie;
@@ -63,7 +56,8 @@ async function handle(request: Request) {
       method === 'POST' &&
       path[0] === 'topics' &&
       path[1] === 'ai-coding' &&
-      path[2] === 'analyses'
+      path[2] === 'analyses' &&
+      path.length === 3
     ) {
       const b = await body(request);
       assert(
@@ -71,15 +65,25 @@ async function handle(request: Request) {
         'INVALID_MODE',
         '请选择有效的来源模式。',
       );
-      const id =
-        b.mode === 'mock'
-          ? DEMO_ID
-          : await createLiveAnalysis(
-              TOPIC_TITLE,
-              stringField(b.requestId, '请求标识', 100),
-              visitor.id,
-            );
-      response = json({ resultId: id });
+      const result = await startAnalysis(
+        b.mode,
+        b.mode === 'mock' ? '' : stringField(b.requestId, '请求标识', 100),
+        visitor.id,
+      );
+      response = json(result, 'jobId' in result ? 202 : 200);
+    } else if (path[0] === 'jobs' && path.length === 2 && method === 'GET') {
+      response = json(await getJob(path[1], visitor.id));
+    } else if (
+      path[0] === 'jobs' &&
+      path[2] === 'run' &&
+      path.length === 3 &&
+      method === 'POST'
+    ) {
+      const job = await runAnalysisJob(path[1], visitor.id);
+      response = json(
+        job,
+        job.status === 'running' || job.status === 'queued' ? 202 : 200,
+      );
     } else if (path[0] === 'analyses' && path.length === 2 && method === 'GET')
       response = json(await getAnalysis(path[1]));
     else if (

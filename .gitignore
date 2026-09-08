@@ -40,3 +40,6 @@ next-env.d.ts
 *.tsbuildinfo
 .dev.vars*
 
+
+# Empty template only; actual .env files remain ignored
+!.env.example
