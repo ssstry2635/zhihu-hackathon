@@ -1,5 +1,5 @@
 'use client';
-import Link from 'next/link';
+import Link from '@/components/page-link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import {
@@ -521,3 +521,4 @@ export default function Discussion() {
     </AppShell>
   );
 }
+

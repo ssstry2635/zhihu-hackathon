@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+
 import {
   ArrowUpRight,
   ArrowRight,
@@ -16,7 +16,7 @@ import { demoAnalysis, TOPIC_TITLE } from '@/shared/demo';
 import { SourceDialog } from '@/components/source-dialog';
 import type { AppConfig } from '@/shared/types';
 export default function Question() {
-  const router = useRouter();
+
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -37,7 +37,7 @@ export default function Question() {
         '/topics/ai-coding/analyses',
         { mode, requestId: crypto.randomUUID() },
       );
-      router.push('/overview?analysis=' + encodeURIComponent(result.resultId));
+      window.location.assign('/overview?analysis=' + encodeURIComponent(result.resultId));
     } catch (e) {
       setError(e instanceof Error ? e.message : '未能完成分析。');
       setBusy(false);
@@ -161,3 +161,4 @@ export default function Question() {
     </AppShell>
   );
 }
+

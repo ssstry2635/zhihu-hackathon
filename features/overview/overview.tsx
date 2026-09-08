@@ -1,5 +1,5 @@
 'use client';
-import Link from 'next/link';
+import Link from '@/components/page-link';
 import {
   ArrowRight,
   Compass,
@@ -207,3 +207,4 @@ export default function Overview() {
     </AppShell>
   );
 }
+

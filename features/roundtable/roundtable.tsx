@@ -1,5 +1,5 @@
 'use client';
-import Link from 'next/link';
+import Link from '@/components/page-link';
 import { useEffect, useState } from 'react';
 import {
   Play,
@@ -415,3 +415,4 @@ export default function Roundtable() {
     </AppShell>
   );
 }
+

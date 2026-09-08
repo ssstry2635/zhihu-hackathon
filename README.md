@@ -66,9 +66,13 @@ pnpm test:smoke
 pnpm build
 ```
 
-`test:smoke` 需要开发服务已启动，只允许访问 localhost/127.0.0.1，会新增标记为“本地验收”的帖子。它覆盖跨访客回复、点赞幂等、请求去重、圆桌隔离、追问额度、问题补充及错误路径。浏览器视觉/交互自动化未包含在这套检查中。
+`test:smoke` 需要开发服务已启动，只允许访问 localhost/127.0.0.1，会新增标记为“本地验收”的帖子。它覆盖跨访客回复、点赞幂等、请求去重、圆桌隔离、追问额度、问题补充及错误路径。导航回归另见 scripts/navigation-checks.mjs：传入隔离的 Playwright page 和预览地址即可执行，不发布用户帖子。
 
 修改 `db/schema.ts` 后运行 `pnpm db:generate`，检查生成迁移，再执行 `pnpm db:migrate`。已部署迁移不可改写；新增变更创建新迁移。
+
+## 页面跳转说明
+
+页面间使用原生链接，分析完成后通过完整页面导航进入总览，规避当前 Vinext 生产构建中 next/link 的运行时异常。圆桌、分类与 gap 参数保留；讨论草稿仍由 sessionStorage 恢复。
 
 ## 当前框架与完整 PRD 的差别
 
@@ -86,3 +90,4 @@ pnpm build
 用户指定的目标仓库是 [ssstry2635/zhihu-hackathon](https://github.com/ssstry2635/zhihu-hackathon)。本次源码可单独放入该仓库根目录；尚未替用户推送该 GitHub 仓库。Sites 私有部署所需源代码保存与该 GitHub 仓库是不同操作。
 
 PRD 见 [docs/PRD-v2.md](docs/PRD-v2.md)。
+
