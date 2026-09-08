@@ -87,7 +87,10 @@ pnpm build
 
 `.openai/hosting.json` 记录 Sites 项目及逻辑数据库绑定，生产数据库由平台配置。后端凭证通过部署平台的安全配置注入。生成产物在 `dist/`，本地数据库在 `.wrangler/`，二者不应提交。
 
-用户指定的目标仓库是 [ssstry2635/zhihu-hackathon](https://github.com/ssstry2635/zhihu-hackathon)。本次源码可单独放入该仓库根目录；尚未替用户推送该 GitHub 仓库。Sites 私有部署所需源代码保存与该 GitHub 仓库是不同操作。
+项目仓库：[ssstry2635/zhihu-hackathon](https://github.com/ssstry2635/zhihu-hackathon)。仓库根目录就是可运行工程，包含源码、PRD、官方 skill、数据库迁移与四人分工说明。可通过 GitHub 的 Code → Download ZIP 下载完整源码，或直接 [下载 main 分支 ZIP](https://github.com/ssstry2635/zhihu-hackathon/archive/refs/heads/main.zip)。
+
+[在线 Demo](https://jianshan-another-side-demo.maryamabubakarmaikih.chatgpt.site) 当前为所有者私有访问，队友可以下载源码在本地运行。仓库不包含接口凭证、依赖安装目录、本地数据库或临时测试文件。
 
 PRD 见 [docs/PRD-v2.md](docs/PRD-v2.md)。
+
 
