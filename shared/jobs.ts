@@ -26,3 +26,13 @@ export const jobStageLabels: Record<JobStage, string> = {
   saving: '保存本次讨论快照',
   done: '整理完成',
 };
+
+export type HistoryResult = {
+  id: string;
+  topicId: string;
+  title: string;
+  sourceMode: 'mock' | 'live' | 'snapshot';
+  collectedAt: string;
+  lastSeenAt: string;
+};
+export type AnalysisHistory = { results: HistoryResult[]; jobs: AnalysisJob[] };

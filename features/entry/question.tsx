@@ -12,15 +12,51 @@ import {
 import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
-import { demoAnalysis, TOPIC_TITLE } from '@/shared/demo';
+import { topics, findTopic, type Topic } from '@/shared/topics';
+import { useSearchParams } from 'next/navigation';
+import Link from '@/components/page-link';
+import { RecentAnalyses } from './recent-analyses';
 import { SourceDialog } from '@/components/source-dialog';
 import type { AppConfig } from '@/shared/types';
 import { jobStageLabels } from '@/shared/jobs';
 import { useEntryJob } from './use-entry-job';
 export default function Question() {
+  const params = useSearchParams();
+  const topicId = params.get('topic') || 'ai-coding';
+  const topic = findTopic(topicId);
+  if (!topic)
+    return (
+      <AppShell page="question">
+        <main className="container">
+          <h1>这个议题尚未开放</h1>
+          <p>请选择一个已开放的议题。</p>
+          {topics.map((t) => (
+            <p key={t.id}>
+              <Link href={'/?topic=' + t.id}>{t.title}</Link>
+            </p>
+          ))}
+        </main>
+      </AppShell>
+    );
+  return (
+    <QuestionContent
+      key={topic.id + ':' + (params.get('job') || '')}
+      topic={topic}
+      requestedJobId={params.get('job')}
+    />
+  );
+}
+function QuestionContent({
+  topic,
+  requestedJobId,
+}: {
+  topic: Topic;
+  requestedJobId: string | null;
+}) {
+  const demoAnalysis = topic.preset;
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [configError, setConfigError] = useState(false);
-  const entry = useEntryJob();
+  const entry = useEntryJob(topic.id, requestedJobId);
   const busy = entry.submitting;
   const active =
     entry.job?.status === 'running' || entry.job?.status === 'queued';
@@ -39,30 +75,50 @@ export default function Question() {
     void loadConfig();
   }, []);
   return (
-    <AppShell page="question">
+    <AppShell page="question" topicId={topic.id} analysisId={demoAnalysis.id}>
       <main className="container">
         <div className="eyebrow">
-          问题现场 <span>/</span> 科技与学习{' '}
+          问题现场 <span>/</span> {topic.section}{' '}
           <span className="mini-label">模拟知乎问题页</span>
         </div>
+        <nav className="topic-picker" aria-label="选择议题">
+          {topics.map((t) => (
+            <Link
+              key={t.id}
+              href={'/?topic=' + t.id}
+              aria-current={t.id === topic.id ? 'page' : undefined}
+              className={t.id === topic.id ? 'selected' : ''}
+            >
+              <span>{t.tags[0]}</span>
+              <b>{t.title}</b>
+            </Link>
+          ))}
+        </nav>
         <div className="question-head">
           <div>
             <div className="tag-row">
-              <span className="tag">AI 编程</span>
-              <span className="tag">学习与成长</span>
+              {topic.tags.map((tag) => (
+                <span key={tag} className="tag">
+                  {tag}
+                </span>
+              ))}
             </div>
-            <h1>{TOPIC_TITLE}</h1>
-            <p className="muted">当工具越来越聪明，我们还需要学到什么程度？</p>
+            <h1>{topic.title}</h1>
+            <p className="muted">{topic.subtitle}</p>
           </div>
           <div className="question-number">
-            01<span>本期议题</span>
+            {String(topics.indexOf(topic) + 1).padStart(2, '0')}
+            <span>本期议题</span>
           </div>
         </div>
         <div className="page-grid">
           <section>
             <div className="section-title">
               <h2>不同经历，不同答案</h2>
-              <span className="subtle">12 条主来源 · 4 条精选评论</span>
+              <span className="subtle">
+                {demoAnalysis.sampleCount} 条主来源 ·{' '}
+                {demoAnalysis.commentCount} 条精选评论
+              </span>
             </div>
             {demoAnalysis.sources.slice(0, 3).map((s, i) => (
               <article className="answer-card" key={s.id}>
@@ -226,8 +282,8 @@ export default function Question() {
             </div>
           </aside>
         </div>
+        <RecentAnalyses />
       </main>
     </AppShell>
   );
 }
-

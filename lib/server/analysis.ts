@@ -1,5 +1,5 @@
 import { getDb } from '@/db';
-import { demoAnalysis, seedPosts, DEMO_ID } from '@/shared/demo';
+import { topics, seedTopicPosts } from '@/shared/topics';
 import type {
   Analysis,
   Category,
@@ -15,35 +15,42 @@ export async function ensureDemo() {
   if (!seeding)
     seeding = (async () => {
       const db = getDb();
-      await db
-        .prepare(
-          'INSERT OR IGNORE INTO analyses (id,payload,created_at) VALUES (?,?,?)',
-        )
-        .bind(DEMO_ID, JSON.stringify(demoAnalysis), new Date().toISOString())
-        .run();
-      const stmts = seedPosts(demoAnalysis).map((p) =>
-        db
+      for (const topic of topics) {
+        const demoAnalysis = topic.preset;
+        await db
           .prepare(
-            'INSERT OR IGNORE INTO posts (id,analysis_id,category_id,author_id,author_name,content,contribution_type,parent_id,gap_id,source_ids,external_url,origin,request_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            'INSERT OR IGNORE INTO analyses (id,payload,created_at) VALUES (?,?,?)',
           )
           .bind(
-            p.id,
-            p.analysisId,
-            p.categoryId,
-            null,
-            p.authorName,
-            p.content,
-            p.contributionType,
-            p.parentPostId,
-            null,
-            JSON.stringify(p.sourceIds),
-            null,
-            'seed',
-            null,
-            p.createdAt,
-          ),
-      );
-      await db.batch(stmts);
+            demoAnalysis.id,
+            JSON.stringify(demoAnalysis),
+            new Date().toISOString(),
+          )
+          .run();
+        const stmts = seedTopicPosts(demoAnalysis).map((p) =>
+          db
+            .prepare(
+              'INSERT OR IGNORE INTO posts (id,analysis_id,category_id,author_id,author_name,content,contribution_type,parent_id,gap_id,source_ids,external_url,origin,request_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            )
+            .bind(
+              p.id,
+              p.analysisId,
+              p.categoryId,
+              null,
+              p.authorName,
+              p.content,
+              p.contributionType,
+              p.parentPostId,
+              null,
+              JSON.stringify(p.sourceIds),
+              null,
+              'seed',
+              null,
+              p.createdAt,
+            ),
+        );
+        await db.batch(stmts);
+      }
     })().catch((e) => {
       seeding = undefined;
       throw e;
@@ -127,6 +134,7 @@ export function validateAnalysis(
   sources: Source[],
   id: string,
   title: string,
+  topicId = 'ai-coding',
 ): Analysis {
   const output = object(value);
   const raw = array(output.categories, 6);
@@ -185,7 +193,7 @@ export function validateAnalysis(
     502,
   );
   const referenced = new Set(categories.flatMap((c) => c.sourceIds));
-  for (const id of [...referenced]) {
+  for (const id of referenced) {
     const s = sources.find((s) => s.id === id);
     if (s?.parentSourceId) referenced.add(s.parentSourceId);
   }
@@ -208,7 +216,7 @@ export function validateAnalysis(
   });
   return {
     id,
-    topicId: 'ai-coding',
+    topicId,
     title,
     sourceMode: 'live',
     generationMode: 'live',
@@ -227,9 +235,11 @@ export const ANALYSIS_PROMPT =
 export async function buildLiveAnalysis(
   title: string,
   onStage: (stage: JobStage) => Promise<void> = async () => {},
+  topicId = 'ai-coding',
+  visitorId = 'system',
 ): Promise<Analysis> {
   await onStage('collecting');
-  const sources = await searchZhihu(title);
+  const sources = await searchZhihu(title, visitorId);
   assert(
     sources.some((s) => s.kind !== 'comment'),
     'EMPTY_SOURCES',
@@ -237,12 +247,17 @@ export async function buildLiveAnalysis(
     422,
   );
   await onStage('classifying');
-  const output = await generateJson(ANALYSIS_PROMPT, { title, sources });
+  const output = await generateJson(
+    ANALYSIS_PROMPT,
+    { title, sources },
+    visitorId,
+  );
   const analysis = validateAnalysis(
     output,
     sources,
     'analysis-' + crypto.randomUUID(),
     title,
+    topicId,
   );
   await onStage('saving');
   return analysis;

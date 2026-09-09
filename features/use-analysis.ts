@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, ensureVisitor } from '@/lib/api';
 import type { Analysis } from '@/shared/types';
 export function useAnalysis() {
   const params = useSearchParams();
@@ -12,7 +12,8 @@ export function useAnalysis() {
     let active = true;
     setAnalysis(null);
     setError('');
-    api<Analysis>('/analyses/' + encodeURIComponent(id))
+    ensureVisitor()
+      .then(() => api<Analysis>('/analyses/' + encodeURIComponent(id)))
       .then((a) => {
         if (active) setAnalysis(a);
       })

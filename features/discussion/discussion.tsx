@@ -19,13 +19,12 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Loading, ErrorState, EmptyDiscussion } from '@/components/states';
 import { SourceDialog } from '@/components/source-dialog';
 import { useAnalysis } from '@/features/use-analysis';
-import { api, post } from '@/lib/api';
+import { api, post, ensureVisitor } from '@/lib/api';
 import {
   contributionLabels,
   type ContributionType,
   type Gap,
   type Post,
-  type Visitor,
 } from '@/shared/types';
 import { useDiscussionTools } from '@/features/webmcp';
 type PostPage = { posts: Post[]; nextCursor: string | null };
@@ -86,7 +85,7 @@ export default function Discussion() {
     setGap(null);
     setReply(null);
     setContent(sessionStorage.getItem(draftKey) || '');
-    api<Visitor>('/visitors/session')
+    ensureVisitor()
       .then((v) => {
         if (active) setNickname(v.displayName === '访客' ? '' : v.displayName);
       })
@@ -252,7 +251,12 @@ export default function Discussion() {
     </article>
   );
   return (
-    <AppShell page="discussion" analysisId={id} live={a?.sourceMode === 'live'}>
+    <AppShell
+      page="discussion"
+      analysisId={id}
+      topicId={a?.topicId}
+      live={a?.sourceMode === 'live'}
+    >
       <main className="container">
         {analysisError ? (
           <ErrorState message={analysisError} />
@@ -521,4 +525,3 @@ export default function Discussion() {
     </AppShell>
   );
 }
-

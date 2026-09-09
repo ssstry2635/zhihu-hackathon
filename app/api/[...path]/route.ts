@@ -10,7 +10,12 @@ import {
 } from '@/lib/server/forum';
 import { startRound, getRound, followup } from '@/lib/server/roundtable';
 import { getZhihuConfig } from '@/lib/server/zhihu';
-import { startAnalysis, getJob, runAnalysisJob } from '@/lib/server/jobs';
+import {
+  startAnalysis,
+  getJob,
+  runAnalysisJob,
+  recentJobs,
+} from '@/lib/server/jobs';
 import {
   assert,
   body,
@@ -19,7 +24,8 @@ import {
   json,
   stringField,
 } from '@/lib/server/http';
-import { TOPIC_TITLE } from '@/shared/demo';
+import { topics, findTopic } from '@/shared/topics';
+import { recordResult, recentResults } from '@/lib/server/history';
 export const dynamic = 'force-dynamic';
 async function handle(request: Request) {
   let cookie: string | undefined;
@@ -28,13 +34,27 @@ async function handle(request: Request) {
       url = new URL(request.url),
       path = url.pathname.slice(5).split('/').map(decodeURIComponent);
     if (method !== 'GET') checkOrigin(request);
-    if (method === 'GET' && path[0] === 'config') return json(getZhihuConfig());
+    if (method === 'GET' && path[0] === 'config' && path.length === 1)
+      return json(getZhihuConfig());
+    if (method === 'GET' && path[0] === 'topics' && path.length === 1)
+      return json(
+        topics.map(({ preset, ...topic }) => ({
+          ...topic,
+          presetId: preset.id,
+        })),
+      );
     await ensureDemo();
     const session = await visitorFor(request);
     cookie = session.cookie;
     const visitor = session.visitor;
     let response: Response;
-    if (path[0] === 'visitors' && path[1] === 'session') {
+    if (path[0] === 'history' && path.length === 1 && method === 'GET') {
+      const [results, jobs] = await Promise.all([
+        recentResults(visitor.id),
+        recentJobs(visitor.id),
+      ]);
+      response = json({ results, jobs });
+    } else if (path[0] === 'visitors' && path[1] === 'session') {
       response =
         method === 'POST'
           ? json(
@@ -46,16 +66,15 @@ async function handle(request: Request) {
           : json(visitor);
     } else if (method === 'POST' && path[0] === 'topics' && path.length === 1) {
       const b = await body(request);
-      assert(
-        b.title === TOPIC_TITLE,
-        'DEMO_TOPIC_ONLY',
-        '当前 Demo 仅开放预置议题。',
-      );
-      response = json({ id: 'ai-coding', title: TOPIC_TITLE, url: null });
+      const topic =
+        typeof b.topicId === 'string'
+          ? findTopic(b.topicId)
+          : topics.find((t) => t.title === b.title);
+      assert(topic, 'DEMO_TOPIC_ONLY', '请选择已开放的议题。');
+      response = json({ id: topic.id, title: topic.title, url: null });
     } else if (
       method === 'POST' &&
       path[0] === 'topics' &&
-      path[1] === 'ai-coding' &&
       path[2] === 'analyses' &&
       path.length === 3
     ) {
@@ -69,6 +88,7 @@ async function handle(request: Request) {
         b.mode,
         b.mode === 'mock' ? '' : stringField(b.requestId, '请求标识', 100),
         visitor.id,
+        path[1],
       );
       response = json(result, 'jobId' in result ? 202 : 200);
     } else if (path[0] === 'jobs' && path.length === 2 && method === 'GET') {
@@ -84,9 +104,15 @@ async function handle(request: Request) {
         job,
         job.status === 'running' || job.status === 'queued' ? 202 : 200,
       );
-    } else if (path[0] === 'analyses' && path.length === 2 && method === 'GET')
-      response = json(await getAnalysis(path[1]));
-    else if (
+    } else if (
+      path[0] === 'analyses' &&
+      path.length === 2 &&
+      method === 'GET'
+    ) {
+      const analysis = await getAnalysis(path[1]);
+      await recordResult(visitor.id, analysis.id);
+      response = json(analysis);
+    } else if (
       path[0] === 'analyses' &&
       path[2] === 'categories' &&
       path[4] === 'posts' &&

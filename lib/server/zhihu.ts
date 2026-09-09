@@ -2,6 +2,7 @@
 // 开发接入使用官方 HTTP 协议；Access Secret 只在服务端读取。
 import { env } from '@/db';
 import { AppError } from './http';
+import { withCallPermit } from './budget';
 import type { AppConfig, Source } from '@/shared/types';
 export const SKILL_VERSION = '0.5.3-beta.20260904115023';
 export const hasZhihuSecret = () => Boolean(env.ZHIHU_ACCESS_SECRET?.trim());
@@ -76,53 +77,65 @@ function upstreamError(status?: number, code?: number): AppError {
     502,
   );
 }
-async function officialFetch(url: string, init: RequestInit) {
-  try {
-    const res = await fetch(url, {
-      ...init,
-      headers: headers(),
-      redirect: 'error',
-      signal: AbortSignal.timeout(40000),
-    });
-    if (!res.ok) throw upstreamError(res.status);
-    let value: unknown;
-    try {
-      value = await res.json();
-    } catch {
-      throw new AppError(
-        'ZHIHU_RESPONSE_INVALID',
-        '知乎接口返回了无法解析的响应，可使用预置演示。',
-        502,
-      );
-    }
-    if (!value || typeof value !== 'object' || Array.isArray(value))
-      throw new AppError(
-        'ZHIHU_RESPONSE_INVALID',
-        '知乎接口响应结构不完整，可使用预置演示。',
-        502,
-      );
-    const result = value as Record<string, unknown>;
-    if (typeof result.Code === 'number' && result.Code !== 0)
-      throw upstreamError(undefined, result.Code);
-    if (result.error) throw upstreamError();
-    return result;
-  } catch (error) {
-    if (error instanceof AppError) throw error;
-    if (
-      error instanceof Error &&
-      ['AbortError', 'TimeoutError'].includes(error.name)
-    )
-      throw new AppError(
-        'ZHIHU_TIMEOUT',
-        '知乎接口响应超时。结果可能尚未返回，未自动重复调用。',
-        504,
-      );
-    throw new AppError(
-      'ZHIHU_UNAVAILABLE',
-      '知乎接口连接失败。未自动重复调用，可使用预置演示。',
-      502,
-    );
-  }
+async function officialFetch(
+  url: string,
+  init: RequestInit,
+  visitorId: string,
+  operationKey: string | null = null,
+) {
+  const authHeaders = headers();
+  return withCallPermit(
+    visitorId,
+    async () => {
+      try {
+        const res = await fetch(url, {
+          ...init,
+          headers: authHeaders,
+          redirect: 'error',
+          signal: AbortSignal.timeout(40000),
+        });
+        if (!res.ok) throw upstreamError(res.status);
+        let value: unknown;
+        try {
+          value = await res.json();
+        } catch {
+          throw new AppError(
+            'ZHIHU_RESPONSE_INVALID',
+            '知乎接口返回了无法解析的响应，可使用预置演示。',
+            502,
+          );
+        }
+        if (!value || typeof value !== 'object' || Array.isArray(value))
+          throw new AppError(
+            'ZHIHU_RESPONSE_INVALID',
+            '知乎接口响应结构不完整，可使用预置演示。',
+            502,
+          );
+        const result = value as Record<string, unknown>;
+        if (typeof result.Code === 'number' && result.Code !== 0)
+          throw upstreamError(undefined, result.Code);
+        if (result.error) throw upstreamError();
+        return result;
+      } catch (error) {
+        if (error instanceof AppError) throw error;
+        if (
+          error instanceof Error &&
+          ['AbortError', 'TimeoutError'].includes(error.name)
+        )
+          throw new AppError(
+            'ZHIHU_TIMEOUT',
+            '知乎接口响应超时。结果可能尚未返回，未自动重复调用。',
+            504,
+          );
+        throw new AppError(
+          'ZHIHU_UNAVAILABLE',
+          '知乎接口连接失败。未自动重复调用，可使用预置演示。',
+          502,
+        );
+      }
+    },
+    operationKey,
+  );
 }
 export function normalizeSearch(payload: unknown): Source[] {
   const value = payload as {
@@ -148,7 +161,7 @@ export function normalizeSearch(payload: unknown): Source[] {
       typeof item.ContentID === 'string' ? item.ContentID.trim() : '';
     const text = (typeof item.ContentText === 'string' ? item.ContentText : '')
       .trim()
-      .slice(0, 8000);
+      .slice(0, 2000);
     if (!externalId || !text) continue;
     const id = type + ':' + externalId;
     if (seen.has(id)) continue;
@@ -175,15 +188,18 @@ export function normalizeSearch(payload: unknown): Source[] {
       url,
       relation: 'unknown',
       collectedAt: now,
+      truncated:
+        typeof item.ContentText === 'string' &&
+        item.ContentText.trim().length > text.length,
     });
     const comments = Array.isArray(item.CommentInfoList)
       ? item.CommentInfoList
       : [];
     const commentTexts = new Set<string>();
-    for (const c of comments.slice(0, 5)) {
+    for (const c of comments.slice(0, 2)) {
       const t =
         c && typeof c.Content === 'string'
-          ? c.Content.trim().slice(0, 2000)
+          ? c.Content.trim().slice(0, 400)
           : '';
       if (!t || commentTexts.has(t)) continue;
       commentTexts.add(t);
@@ -197,22 +213,48 @@ export function normalizeSearch(payload: unknown): Source[] {
         url: null,
         relation: 'unknown',
         collectedAt: now,
+        truncated: c.Content.trim().length > t.length,
       });
     }
   }
-  return result;
+  // Preserve main sources first, then add comments within the remaining budget.
+  let remaining = 24000;
+  const budgeted: Source[] = [];
+  for (const source of [
+    ...result.filter((s) => s.kind !== 'comment'),
+    ...result.filter((s) => s.kind === 'comment'),
+  ]) {
+    if (remaining <= 0) break;
+    if (
+      source.parentSourceId &&
+      !budgeted.some((s) => s.id === source.parentSourceId)
+    )
+      continue;
+    const text = source.text.slice(0, remaining);
+    budgeted.push({
+      ...source,
+      text,
+      truncated: source.truncated || text.length < source.text.length,
+    });
+    remaining -= text.length;
+  }
+  return budgeted;
 }
-export async function searchZhihu(query: string) {
+export async function searchZhihu(query: string, visitorId = 'system') {
   if (!query.trim() || query.length > 200)
     throw new AppError('ZHIHU_REQUEST_INVALID', '搜索关键词须为 1 至 200 字。');
   const u = new URL('https://developer.zhihu.com/api/v1/content/zhihu_search');
   u.searchParams.set('Query', query.trim());
   u.searchParams.set('Count', '10');
-  return normalizeSearch(await officialFetch(u.href, { method: 'GET' }));
+  return normalizeSearch(
+    await officialFetch(u.href, { method: 'GET' }, visitorId),
+  );
 }
 export async function generateJson(
   system: string,
   input: unknown,
+  visitorId = 'system',
+  operationKey: string | null = null,
 ): Promise<unknown> {
   const configured = env.ZHIHU_MODEL?.trim() || 'zhida-fast-1p5';
   if (!['zhida-fast-1p5', 'zhida-thinking-1p5'].includes(configured))
@@ -220,6 +262,13 @@ export async function generateJson(
       'MODEL_NOT_SUPPORTED',
       '当前模型尚未通过本应用的上下文能力验证。',
       503,
+    );
+  const contentInput = JSON.stringify(input);
+  if (contentInput.length + system.length > 60000)
+    throw new AppError(
+      'MODEL_INPUT_TOO_LARGE',
+      '本次材料较长，请减少输入材料后再生成。未调用模型。',
+      413,
     );
   const value = await officialFetch(
     'https://developer.zhihu.com/v1/chat/completions',
@@ -229,11 +278,13 @@ export async function generateJson(
         model: configured,
         messages: [
           { role: 'system', content: system },
-          { role: 'user', content: JSON.stringify(input) },
+          { role: 'user', content: contentInput },
         ],
         stream: false,
       }),
     },
+    visitorId,
+    operationKey,
   );
   const content = (value as { choices?: { message?: { content?: string } }[] })
     .choices?.[0]?.message?.content;

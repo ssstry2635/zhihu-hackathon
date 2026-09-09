@@ -21,7 +21,12 @@ export default function Overview() {
   const { id, analysis: a, error } = useAnalysis();
   const icons = [Compass, Clock3, BriefcaseBusiness];
   return (
-    <AppShell page="overview" analysisId={id} live={a?.sourceMode === 'live'}>
+    <AppShell
+      page="overview"
+      analysisId={id}
+      topicId={a?.topicId}
+      live={a?.sourceMode === 'live'}
+    >
       <main className="container">
         {error ? (
           <ErrorState message={error} />
@@ -207,4 +212,3 @@ export default function Overview() {
     </AppShell>
   );
 }
-

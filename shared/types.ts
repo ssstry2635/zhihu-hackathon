@@ -3,6 +3,7 @@ export type Source = {
   id: string;
   kind: 'answer' | 'article' | 'comment';
   externalId?: string;
+  truncated?: boolean;
   parentSourceId?: string;
   title: string;
   text: string;

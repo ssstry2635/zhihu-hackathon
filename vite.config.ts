@@ -44,6 +44,18 @@ export default defineConfig(async ({ command, mode }) => {
   const localEnv =
     command === 'serve' ? loadEnv(mode, process.cwd(), 'ZHIHU_') : {};
 
+  const localLimits = Object.fromEntries(
+    [
+      'ZHIHU_DAILY_CALL_LIMIT',
+      'ZHIHU_VISITOR_DAILY_CALL_LIMIT',
+      'ZHIHU_VISITOR_MINUTE_CALL_LIMIT',
+      'ZHIHU_MAX_CONCURRENT_CALLS',
+    ].flatMap((key) => {
+      const value = process.env[key] ?? localEnv[key];
+      return value === undefined ? [] : [[key, value]];
+    }),
+  );
+
   // Wrangler snapshots its log path while the Cloudflare plugin is imported.
   const { cloudflare } = await import('@cloudflare/vite-plugin');
 
@@ -64,6 +76,7 @@ export default defineConfig(async ({ command, mode }) => {
           ...(command === 'serve'
             ? {
                 vars: {
+                  ...localLimits,
                   ...((process.env.ZHIHU_ACCESS_SECRET ??
                   localEnv.ZHIHU_ACCESS_SECRET)
                     ? {

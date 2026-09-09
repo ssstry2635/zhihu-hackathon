@@ -1,17 +1,19 @@
 import { getDb } from '@/db';
 import type { AnalysisJob, AnalysisStart, JobStage } from '@/shared/jobs';
-import { DEMO_ID, TOPIC_TITLE } from '@/shared/demo';
+import { findTopic } from '@/shared/topics';
+import { recordResult } from './history';
 import { assert, errorInfo } from './http';
 import { buildLiveAnalysis } from './analysis';
 import { getZhihuConfig, assertLiveReady, SKILL_VERSION } from './zhihu';
 // Coordinate this version with B when normalization/classification contracts change.
-const DATA_VERSION = 'analysis-v1';
+const DATA_VERSION = 'analysis-v2-budgeted';
 const RUN_TIMEOUT_MS = 120_000;
 const QUEUED_TIMEOUT_MS = 600_000;
 const CACHE_MS = 3_600_000;
 type Row = {
   id: string;
   visitor_id: string;
+  topic_id: string;
   fingerprint: string;
   status: AnalysisJob['status'];
   stage: JobStage;
@@ -26,7 +28,7 @@ const iso = () => new Date().toISOString();
 function publicJob(row: Row): AnalysisJob {
   return {
     id: row.id,
-    topicId: 'ai-coding',
+    topicId: row.topic_id,
     status: row.status,
     stage: row.stage,
     resultId: row.result_id,
@@ -72,8 +74,14 @@ export async function startAnalysis(
   mode: 'mock' | 'live',
   requestId: string,
   visitorId: string,
+  topicId = 'ai-coding',
 ): Promise<AnalysisStart> {
-  if (mode === 'mock') return { resultId: DEMO_ID, cached: true };
+  const topic = findTopic(topicId);
+  assert(topic, 'NOT_FOUND', '这个议题尚未开放，请选择列表中的议题。', 404);
+  if (mode === 'mock') {
+    await recordResult(visitorId, topic.preset.id);
+    return { resultId: topic.preset.id, cached: true };
+  }
   assert(
     /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(requestId),
     'INVALID_REQUEST_ID',
@@ -84,39 +92,59 @@ export async function startAnalysis(
     .prepare('SELECT * FROM analysis_jobs WHERE id=? AND visitor_id=?')
     .bind(requestId, visitorId)
     .first<Row>();
-  if (previous) return { jobId: previous.id, job: publicJob(previous) };
+  if (previous) {
+    assert(
+      previous.topic_id === topicId,
+      'REQUEST_CONFLICT',
+      '同一请求标识不能用于不同议题。',
+      409,
+    );
+    return { jobId: previous.id, job: publicJob(previous) };
+  }
   assertLiveReady();
   const fingerprint = JSON.stringify([
-    'ai-coding',
-    TOPIC_TITLE,
+    topic.id,
+    topic.title,
     'related-search:10',
     SKILL_VERSION,
     DATA_VERSION,
     getZhihuConfig().model,
   ]);
-  const activeKey = visitorId + ':' + fingerprint;
+  const activeKey = fingerprint;
   const current = await db()
     .prepare(
-      "SELECT * FROM analysis_jobs WHERE active_key=? AND status IN ('queued','running')",
+      "SELECT * FROM analysis_jobs WHERE fingerprint=? AND status IN ('queued','running')",
     )
     .bind(activeKey)
     .first<Row>();
-  if (current) return { jobId: current.id, job: publicJob(current) };
+  if (current) {
+    assert(
+      current.visitor_id === visitorId,
+      'TOPIC_BUSY',
+      '这个议题正在整理，稍后可复用结果，也可以先看预置演示。',
+      409,
+    );
+    return { jobId: current.id, job: publicJob(current) };
+  }
   const cached = await db()
     .prepare(
       "SELECT result_id FROM analysis_jobs WHERE fingerprint=? AND status='succeeded' AND updated_at>? ORDER BY updated_at DESC LIMIT 1",
     )
     .bind(fingerprint, new Date(Date.now() - CACHE_MS).toISOString())
     .first<{ result_id: string }>();
-  if (cached) return { resultId: cached.result_id, cached: true };
+  if (cached) {
+    await recordResult(visitorId, cached.result_id);
+    return { resultId: cached.result_id, cached: true };
+  }
   const now = iso();
   await db()
     .prepare(
-      "INSERT OR IGNORE INTO analysis_jobs (id,visitor_id,fingerprint,status,stage,active_key,created_at,updated_at,expires_at) VALUES (?,?,?,'queued','queued',?,?,?,?)",
+      "INSERT OR IGNORE INTO analysis_jobs (id,visitor_id,topic_id,fingerprint,status,stage,active_key,created_at,updated_at,expires_at) VALUES (?,?,?,?,'queued','queued',?,?,?,?)",
     )
     .bind(
       requestId,
       visitorId,
+      topicId,
       fingerprint,
       activeKey,
       now,
@@ -132,6 +160,12 @@ export async function startAnalysis(
     .bind(activeKey, requestId, visitorId)
     .first<Row>();
   assert(row, 'REQUEST_CONFLICT', '请求标识已被使用，请重新发起任务。', 409);
+  assert(
+    row.visitor_id === visitorId,
+    'TOPIC_BUSY',
+    '这个议题正在整理，稍后可复用结果。',
+    409,
+  );
   return { jobId: row.id, job: publicJob(row) };
 }
 export async function runAnalysisJob(
@@ -171,7 +205,14 @@ export async function runAnalysisJob(
     };
     // Await execution inside POST. No durable queue is bound to this Worker;
     // unawaited promises or waitUntil cannot guarantee completion after disconnect.
-    const analysis = await buildLiveAnalysis(TOPIC_TITLE, onStage);
+    const topic = findTopic(job.topicId);
+    assert(topic, 'NOT_FOUND', '这个议题尚未开放。', 404);
+    const analysis = await buildLiveAnalysis(
+      topic.title,
+      onStage,
+      topic.id,
+      visitorId,
+    );
     const finishedAt = iso();
     await db().batch([
       db()
@@ -190,6 +231,11 @@ export async function runAnalysisJob(
           "UPDATE analysis_jobs SET status='succeeded',stage='done',result_id=?,active_key=NULL,updated_at=? WHERE id=? AND status='running' AND expires_at>?",
         )
         .bind(analysis.id, finishedAt, id, finishedAt),
+      db()
+        .prepare(
+          "INSERT INTO analysis_visits (visitor_id,analysis_id,seen_at) SELECT ?,?,? WHERE EXISTS (SELECT 1 FROM analysis_jobs WHERE id=? AND status='succeeded') ON CONFLICT(visitor_id,analysis_id) DO UPDATE SET seen_at=excluded.seen_at",
+        )
+        .bind(visitorId, analysis.id, finishedAt, id),
     ]);
   } catch (error) {
     await db()
@@ -204,4 +250,15 @@ export async function runAnalysisJob(
       .run();
   }
   return getJob(id, visitorId);
+}
+
+export async function recentJobs(visitorId: string): Promise<AnalysisJob[]> {
+  await expireJobs();
+  const { results } = await db()
+    .prepare(
+      'SELECT * FROM analysis_jobs WHERE visitor_id=? ORDER BY created_at DESC,id DESC LIMIT 20',
+    )
+    .bind(visitorId)
+    .all<Row>();
+  return results.map(publicJob);
 }

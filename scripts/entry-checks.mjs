@@ -116,9 +116,10 @@ export async function checkEntry(page, origin) {
   await page.unroute(origin + '/api/config');
   await page.unroute(origin + '/api/topics/ai-coding/analyses');
   await page.unroute(origin + '/api/jobs/**');
-  await page.evaluate(() =>
-    sessionStorage.removeItem('jianshan:analysis-job:v1'),
-  );
+  await page.evaluate(() => {
+    sessionStorage.removeItem('jianshan:analysis-job:v1');
+    sessionStorage.removeItem('jianshan:analysis-job:v2:ai-coding');
+  });
   return {
     status: 'passed',
     scope: 'artificial API fixtures',

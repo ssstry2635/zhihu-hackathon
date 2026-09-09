@@ -19,12 +19,13 @@ pnpm dev
 
 ## 演示顺序
 
-1. 问题现场：点击“见山另一面”，进入预置样本。
-2. 观点总览：切换角度/立场，展开来源，进入“学习投入”。
+1. 问题现场：选择 AI 编程、远程办公或 AI 作业，再点“见山另一面”。
+2. 观点总览：切换角度/立场，展开来源，进入一个讨论角度。
 3. 分类讨论：填写昵称，发布一段经历；另一浏览器回复和点赞。
 4. Agent 圆桌：播放或查看完整讨论，追问一次。
 5. 点击“补充这个问题”，发布经历或证据。
 6. 返回圆桌刷新，查看补充数量；讨论区可查看已保存材料。
+7. 从“最近分析”打开看过的快照；关闭标签页后用同一浏览器回来仍可找回。
 
 **所有预置来源、作者、发言和圆桌均是模拟或演示内容；不是实时采集的知乎原文。** 预置圆桌自由追问返回固定演示回应。实际发帖、回复、点赞、会话隔离和补充关联是真实服务端功能。
 
@@ -37,9 +38,9 @@ pnpm dev
 | C · 真人讨论       | `features/discussion/`、`lib/server/forum.ts`、`db/schema.ts`          | 身份、存储、发布回复与点赞     |
 | D · Agent 圆桌     | `features/roundtable/`、`lib/server/roundtable.ts`                     | 角色编排、追问与待解问题       |
 
-A 的重点实现、接入步骤、任务接口和队友交接见 [docs/A-HANDOFF.md](docs/A-HANDOFF.md)。
+A 的重点实现、接入步骤、任务接口和队友交接见 [docs/A-HANDOFF.md](docs/A-HANDOFF.md)。本轮额度保护、历史和三议题的配置与验收见 [docs/A-EXPANSION.md](docs/A-EXPANSION.md)。
 
-`shared/types.ts` 与 `shared/jobs.ts` 是共同数据契约。`shared/demo.ts` 是唯一预置样本来源。修改 ID、数据字段、数据库结构时先与依赖方同步。UI 公共组件在 `components/`，样式在 `app/globals.css`。
+`shared/types.ts` 与 `shared/jobs.ts` 是共同数据契约。`shared/topics.ts` 是三个议题的统一注册表；AI 编程的原有样本保留在 `shared/demo.ts`，另两个议题各有独立来源、分类、圆桌和种子讨论。修改 ID、数据字段、数据库结构时先与依赖方同步。UI 公共组件在 `components/`，样式在 `app/globals.css`。
 
 ## 知乎官方接入
 
@@ -80,7 +81,7 @@ pnpm build
 
 ## 当前框架与完整 PRD 的差别
 
-- 仅一个预置议题；未做真实浏览器插件、自由搜索入口或知乎 OAuth。
+- 三个预置议题已贯通；未做真实浏览器插件、自由搜索入口或知乎 OAuth。
 - 采集任务已持久化，支持立即创建、独立查进度、去重和刷新恢复；执行仍由独立 HTTP 请求承载，持久队列尚未接入。
 - 真实搜索/分类和圆桌适配层已实现，但尚无团队凭证实测。
 - 不自动将新增帖子重新注入模型；通过关联问题和材料列表展示补充。
@@ -96,5 +97,3 @@ pnpm build
 [在线 Demo](https://jianshan-another-side-demo.maryamabubakarmaikih.chatgpt.site) 当前为所有者私有访问，队友可以下载源码在本地运行。仓库不包含接口凭证、依赖安装目录、本地数据库或临时测试文件。
 
 PRD 见 [docs/PRD-v2.md](docs/PRD-v2.md)。
-
-

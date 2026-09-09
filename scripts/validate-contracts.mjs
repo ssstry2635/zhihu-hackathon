@@ -19,7 +19,12 @@ const context = vm.createContext({
   },
 });
 const modules = new Map();
-async function load(file) {
+const loading = new Map();
+function load(file) {
+  if (!loading.has(file)) loading.set(file, createModule(file));
+  return loading.get(file);
+}
+async function createModule(file) {
   if (modules.has(file)) return modules.get(file);
   if (file === '@/db') {
     const m = new vm.SyntheticModule(
@@ -44,17 +49,19 @@ async function load(file) {
   }).outputText;
   const m = new vm.SourceTextModule(js, { context, identifier: file });
   modules.set(file, m);
-  await m.link(async (spec, ref) => {
-    if (spec === '@/db') return load(spec);
-    const resolved = spec.startsWith('@/')
-      ? path.join(root, spec.slice(2))
-      : path.resolve(path.dirname(ref.identifier), spec);
-    return load(resolved.endsWith('.ts') ? resolved : resolved + '.ts');
-  });
+
   return m;
 }
 async function moduleAt(relative) {
   const m = await load(path.join(root, relative));
+  if (m.status === 'unlinked')
+    await m.link(async (spec, ref) => {
+      if (spec === '@/db') return load(spec);
+      const resolved = spec.startsWith('@/')
+        ? path.join(root, spec.slice(2))
+        : path.resolve(path.dirname(ref.identifier), spec);
+      return load(resolved.endsWith('.ts') ? resolved : resolved + '.ts');
+    });
   if (m.status === 'linked') await m.evaluate();
   return m.namespace;
 }

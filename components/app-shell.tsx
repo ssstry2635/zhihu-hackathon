@@ -1,5 +1,80 @@
 import Link from '@/components/page-link';
-import {Mountain,ArrowLeft} from 'lucide-react';
-export function AppShell({children,page,analysisId='demo-v1',live=false}:{children:React.ReactNode;page:'question'|'overview'|'discussion'|'roundtable';analysisId?:string;live?:boolean}){const q='?analysis='+encodeURIComponent(analysisId);return <><header className="topbar"><Link className="brand" href="/"><Mountain size={27}/>见山另一面</Link><nav aria-label="主导航"><Link aria-current={page==='question'?'page':undefined} className={page==='question'?'active':''} href="/">问题现场</Link><Link aria-current={page==='overview'||page==='discussion'?'page':undefined} className={page==='overview'||page==='discussion'?'active':''} href={'/overview'+q}>观点总览</Link><Link aria-current={page==='roundtable'?'page':undefined} className={page==='roundtable'?'active':''} href={'/roundtable'+q}>Agent 圆桌</Link></nav><span className={'mode '+(live?'live':'')}>{live?'真实检索样本':'预置演示'}</span></header>{children}<footer>见山另一面<span>共识可以深入，分歧值得理解。</span></footer></>}
-export function BackLink({analysisId='demo-v1',label='返回观点总览'}:{analysisId?:string;label?:string}){return <Link className="back-link" href={'/overview?analysis='+encodeURIComponent(analysisId)}><ArrowLeft size={16}/>{label}</Link>}
-
+import { Mountain, ArrowLeft } from 'lucide-react';
+export function AppShell({
+  children,
+  page,
+  analysisId = 'demo-v1',
+  topicId = 'ai-coding',
+  live = false,
+}: {
+  children: React.ReactNode;
+  page: 'question' | 'overview' | 'discussion' | 'roundtable';
+  analysisId?: string;
+  topicId?: string;
+  live?: boolean;
+}) {
+  const q = '?analysis=' + encodeURIComponent(analysisId),
+    entry = '/?topic=' + encodeURIComponent(topicId);
+  return (
+    <>
+      <header className="topbar">
+        <Link className="brand" href={entry}>
+          <Mountain size={27} />
+          见山另一面
+        </Link>
+        <nav aria-label="主导航">
+          <Link
+            aria-current={page === 'question' ? 'page' : undefined}
+            className={page === 'question' ? 'active' : ''}
+            href={entry}
+          >
+            问题现场
+          </Link>
+          <Link
+            aria-current={
+              page === 'overview' || page === 'discussion' ? 'page' : undefined
+            }
+            className={
+              page === 'overview' || page === 'discussion' ? 'active' : ''
+            }
+            href={'/overview' + q}
+          >
+            观点总览
+          </Link>
+          <Link
+            aria-current={page === 'roundtable' ? 'page' : undefined}
+            className={page === 'roundtable' ? 'active' : ''}
+            href={'/roundtable' + q}
+          >
+            Agent 圆桌
+          </Link>
+          <Link href={entry + '#recent'}>最近分析</Link>
+        </nav>
+        <span className={'mode ' + (live ? 'live' : '')}>
+          {live ? '真实检索样本' : '预置演示'}
+        </span>
+      </header>
+      {children}
+      <footer>
+        见山另一面<span>共识可以深入，分歧值得理解。</span>
+      </footer>
+    </>
+  );
+}
+export function BackLink({
+  analysisId = 'demo-v1',
+  label = '返回观点总览',
+}: {
+  analysisId?: string;
+  label?: string;
+}) {
+  return (
+    <Link
+      className="back-link"
+      href={'/overview?analysis=' + encodeURIComponent(analysisId)}
+    >
+      <ArrowLeft size={16} />
+      {label}
+    </Link>
+  );
+}

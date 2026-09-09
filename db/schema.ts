@@ -82,6 +82,7 @@ export const analysisJobs = sqliteTable(
   'analysis_jobs',
   {
     id: text('id').primaryKey(),
+    topicId: text('topic_id').notNull().default('ai-coding'),
     visitorId: text('visitor_id').notNull(),
     fingerprint: text('fingerprint').notNull(),
     status: text('status').notNull(),
@@ -97,5 +98,36 @@ export const analysisJobs = sqliteTable(
     uniqueIndex('idx_analysis_jobs_active').on(t.activeKey),
     index('idx_analysis_jobs_cache').on(t.fingerprint, t.status, t.updatedAt),
     index('idx_analysis_jobs_expiry').on(t.status, t.expiresAt),
+  ],
+);
+
+export const analysisVisits = sqliteTable(
+  'analysis_visits',
+  {
+    visitorId: text('visitor_id').notNull(),
+    analysisId: text('analysis_id').notNull(),
+    seenAt: text('seen_at').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.visitorId, t.analysisId] }),
+    index('idx_visits_recent').on(t.visitorId, t.seenAt),
+  ],
+);
+export const upstreamCalls = sqliteTable(
+  'upstream_calls',
+  {
+    id: text('id').primaryKey(),
+    visitorId: text('visitor_id').notNull(),
+    dayKey: text('day_key').notNull(),
+    startedAt: integer('started_at').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+    finishedAt: integer('finished_at'),
+    operationKey: text('operation_key'),
+  },
+  (t) => [
+    index('idx_calls_day').on(t.dayKey, t.visitorId),
+    index('idx_calls_recent').on(t.visitorId, t.startedAt),
+    index('idx_calls_active').on(t.finishedAt, t.expiresAt),
+    uniqueIndex('idx_calls_operation').on(t.operationKey),
   ],
 );

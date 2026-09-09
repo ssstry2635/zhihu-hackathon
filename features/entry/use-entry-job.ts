@@ -1,24 +1,28 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, ApiError, post } from '@/lib/api';
+import { api, ApiError, post, ensureVisitor } from '@/lib/api';
 import type { AnalysisJob, AnalysisStart } from '@/shared/jobs';
-const STORAGE_KEY = 'jianshan:analysis-job:v1';
-const readStored = () => {
+const LEGACY_KEY = 'jianshan:analysis-job:v1';
+const readStored = (key: string) => {
   try {
-    return sessionStorage.getItem(STORAGE_KEY);
+    return sessionStorage.getItem(key);
   } catch {
     return null;
   }
 };
-const saveStored = (id: string | null) => {
+const saveStored = (key: string, id: string | null) => {
   try {
-    if (id) sessionStorage.setItem(STORAGE_KEY, id);
-    else sessionStorage.removeItem(STORAGE_KEY);
+    if (id) sessionStorage.setItem(key, id);
+    else sessionStorage.removeItem(key);
   } catch {}
 };
 const message = (e: unknown) =>
   e instanceof Error ? e.message : '未能完成操作。';
-export function useEntryJob() {
+export function useEntryJob(
+  topicId = 'ai-coding',
+  requestedJobId: string | null = null,
+) {
+  const storageKey = 'jianshan:analysis-job:v2:' + topicId;
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<AnalysisJob | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -29,15 +33,23 @@ export function useEntryJob() {
   const activeId = useRef<string | null>(null);
   const autoOpen = useRef(false);
   const navigating = useRef(false);
-  const openResult = useCallback((id: string) => {
-    if (navigating.current) return;
-    navigating.current = true;
-    saveStored(null);
-    window.location.assign('/overview?analysis=' + encodeURIComponent(id));
-  }, []);
+  const openResult = useCallback(
+    (id: string) => {
+      if (navigating.current) return;
+      navigating.current = true;
+      saveStored(storageKey, null);
+      window.location.assign('/overview?analysis=' + encodeURIComponent(id));
+    },
+    [storageKey],
+  );
   const receive = useCallback(
     (next: AnalysisJob) => {
       if (activeId.current !== next.id) return;
+      if (next.topicId !== topicId) {
+        setNotice('该任务属于另一个议题，请从最近分析进入。');
+        setLookupFailed(true);
+        return;
+      }
       setJob((previous) =>
         previous &&
         previous.id === next.id &&
@@ -50,17 +62,21 @@ export function useEntryJob() {
       if (next.status === 'succeeded' && next.resultId && autoOpen.current)
         openResult(next.resultId);
     },
-    [openResult],
+    [openResult, topicId],
   );
-  const watch = useCallback((id: string) => {
-    activeId.current = id;
-    saveStored(id);
-    setJobId(id);
-  }, []);
+  const watch = useCallback(
+    (id: string) => {
+      activeId.current = id;
+      saveStored(storageKey, id);
+      setJobId(id);
+    },
+    [storageKey],
+  );
   const refresh = useCallback(
     async (id = activeId.current) => {
       if (!id) return;
       try {
+        await ensureVisitor();
         receive(
           await api<AnalysisJob>('/jobs/' + encodeURIComponent(id), {
             signal: AbortSignal.timeout(15000),
@@ -73,7 +89,7 @@ export function useEntryJob() {
         // An unknown ID was never executed by this page; allow the user to start again.
         if (e instanceof ApiError && e.status === 404) {
           activeId.current = null;
-          saveStored(null);
+          saveStored(storageKey, null);
           setJobId(null);
           setJob(null);
         }
@@ -81,18 +97,22 @@ export function useEntryJob() {
         setRestoring(false);
       }
     },
-    [receive],
+    [receive, storageKey],
   );
   // Hydrate the external sessionStorage value after SSR so server/client markup agrees.
   /* eslint-disable react/react-compiler */
   useEffect(() => {
-    const id = readStored();
+    const id =
+      requestedJobId ||
+      readStored(storageKey) ||
+      (topicId === 'ai-coding' ? readStored(LEGACY_KEY) : null);
+    if (topicId === 'ai-coding') saveStored(LEGACY_KEY, null);
     if (id && /^[a-f0-9-]{36}$/i.test(id)) watch(id);
     else {
-      saveStored(null);
+      saveStored(storageKey, null);
       setRestoring(false);
     }
-  }, [watch]);
+  }, [watch, requestedJobId, storageKey, topicId]);
   /* eslint-enable react/react-compiler */
   useEffect(() => {
     if (
@@ -147,15 +167,15 @@ export function useEntryJob() {
     setLookupFailed(false);
     activeId.current = null;
     setJobId(null);
-    saveStored(null);
+    saveStored(storageKey, null);
     autoOpen.current = true;
     try {
       // Establish the cookie before create/run/status requests can overlap.
-      await api('/visitors/session', { signal: AbortSignal.timeout(15000) });
+      await ensureVisitor();
       const requestId = crypto.randomUUID();
-      saveStored(requestId);
+      saveStored(storageKey, requestId);
       const result = await post<AnalysisStart>(
-        '/topics/ai-coding/analyses',
+        '/topics/' + encodeURIComponent(topicId) + '/analyses',
         { mode: 'live', requestId },
         { signal: AbortSignal.timeout(15000) },
       );
@@ -169,14 +189,14 @@ export function useEntryJob() {
     } catch (e) {
       setRestoring(false);
       setNotice(message(e));
-      const id = readStored();
+      const id = readStored(storageKey);
       if (
         id &&
         e instanceof ApiError &&
         ['NETWORK_ERROR', 'RESPONSE_INVALID'].includes(e.code)
       )
         watch(id);
-      else saveStored(null);
+      else saveStored(storageKey, null);
     } finally {
       gate.current = false;
       setSubmitting(false);
@@ -188,8 +208,9 @@ export function useEntryJob() {
     setSubmitting(true);
     autoOpen.current = false;
     try {
+      await ensureVisitor();
       const result = await post<{ resultId: string }>(
-        '/topics/ai-coding/analyses',
+        '/topics/' + encodeURIComponent(topicId) + '/analyses',
         { mode: 'mock' },
         { signal: AbortSignal.timeout(15000) },
       );

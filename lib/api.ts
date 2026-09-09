@@ -47,3 +47,15 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
 }
 export const post = <T>(path: string, data: unknown, options?: RequestInit) =>
   api<T>(path, { ...options, method: 'POST', body: JSON.stringify(data) });
+
+// Share first-visit initialization across entry, history and analysis requests.
+let session: Promise<import('@/shared/types').Visitor> | undefined;
+export function ensureVisitor() {
+  return (session ??= api<import('@/shared/types').Visitor>(
+    '/visitors/session',
+    { signal: AbortSignal.timeout(15000) },
+  ).catch((error) => {
+    session = undefined;
+    throw error;
+  }));
+}

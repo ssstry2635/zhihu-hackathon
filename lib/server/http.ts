@@ -80,6 +80,13 @@ export function errorInfo(error: unknown) {
           'EMPTY_SOURCES',
           'LIVE_NOT_CONFIGURED',
           'JOB_EXPIRED',
+          'APP_DAILY_LIMIT',
+          'VISITOR_DAILY_LIMIT',
+          'VISITOR_RATE_LIMIT',
+          'UPSTREAM_BUSY',
+          'TOPIC_BUSY',
+          'BUDGET_CONFIG_INVALID',
+          'MODEL_INPUT_TOO_LARGE',
         ].includes(error.code),
     };
   return {

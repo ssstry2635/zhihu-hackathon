@@ -106,7 +106,12 @@ export default function Roundtable() {
     ? visible >= round.messages.filter((m) => m.phase !== 'followup').length
     : false;
   return (
-    <AppShell page="roundtable" analysisId={id} live={a?.sourceMode === 'live'}>
+    <AppShell
+      page="roundtable"
+      analysisId={id}
+      topicId={a?.topicId}
+      live={a?.sourceMode === 'live'}
+    >
       <main className="container">
         {analysisError ? (
           <ErrorState message={analysisError} />
@@ -415,4 +420,3 @@ export default function Roundtable() {
     </AppShell>
   );
 }
-
