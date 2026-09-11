@@ -40,7 +40,9 @@ export function SourceDialog({
             <DialogDescription>
               {analysis.sourceMode === 'mock'
                 ? '团队编写的模拟样本，用于体验产品；没有对应的真实知乎作者或原文。'
-                : '当前检索到的摘要与精选评论，归属未确认的内容不能视为本问题下的完整回答。'}
+                : analysis.scope === 'same_question_only'
+                  ? '当前快照只纳入同一问题范围内的摘要与精选评论；摘要不等同于原文全文。'
+                  : '当前快照来自相关议题检索；归属未确认的内容不能视为本问题下的完整回答。'}
             </DialogDescription>
           </DialogHeader>
           <div className="source-scroll">

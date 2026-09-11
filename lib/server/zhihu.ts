@@ -184,6 +184,7 @@ export function normalizeSearch(payload: unknown): Source[] {
       title:
         typeof item.Title === 'string' ? item.Title.slice(0, 500) : '知乎内容',
       text,
+      textKind: 'summary',
       authorName: typeof item.AuthorName === 'string' ? item.AuthorName : null,
       url,
       relation: 'unknown',
@@ -209,6 +210,7 @@ export function normalizeSearch(payload: unknown): Source[] {
         parentSourceId: id,
         title: '精选评论',
         text: t,
+        textKind: 'comment',
         authorName: null,
         url: null,
         relation: 'unknown',

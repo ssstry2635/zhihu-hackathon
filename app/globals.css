@@ -657,7 +657,26 @@ footer {
   color: #6a7890;
   line-height: 1.9;
   min-height: 56px;
-  margin: 10px 0 20px;
+  margin: 10px 0 12px;
+}
+.discussion-question {
+  min-height: 72px;
+  margin: 0 0 18px;
+  padding: 11px 12px;
+  border-left: 3px solid var(--tone);
+  border-radius: 0 8px 8px 0;
+  background: var(--tone-bg);
+  color: #435c7d;
+  font-size: 14px;
+  line-height: 1.75;
+}
+.discussion-question span {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--tone);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 .count-line {
   font-size: 13px;
@@ -680,6 +699,29 @@ footer {
   display: block;
   height: 100%;
   background: var(--tone);
+}
+.representative-materials {
+  flex: 1;
+  margin: 20px 0;
+  padding: 12px 0 0;
+  border-top: 1px solid #edf0f5;
+}
+.representative-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 5px 0;
+  color: #a1b3ca;
+}
+.representative-item p {
+  margin: -2px 0 0;
+  color: #63758c;
+  font-size: 13px;
+  line-height: 1.75;
+}
+.representative-materials > .source-link {
+  margin-top: 6px;
 }
 blockquote {
   margin: 20px 0;
@@ -711,7 +753,7 @@ blockquote p {
 }
 .insight-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 22px;
   margin-top: 30px;
 }
@@ -730,6 +772,9 @@ blockquote p {
 .insight-card:nth-child(2) .insight-title {
   color: #92744e;
 }
+.insight-card:nth-child(3) .insight-title {
+  color: #6b63a5;
+}
 .insight-title h2 {
   font-size: 17px;
 }
@@ -743,6 +788,12 @@ blockquote p {
   color: #7b8799;
   font-size: 12px;
   margin-top: 16px;
+}
+.legacy-evidence-note {
+  display: inline-block;
+  margin-top: 7px;
+  color: #8995a7;
+  font-size: 12px;
 }
 .round-banner {
   display: flex;
@@ -767,6 +818,19 @@ blockquote p {
 .round-banner p {
   color: #657b9a;
   font-size: 15px;
+}
+.round-banner.unavailable {
+  background: #f3f5f8;
+  border-color: #dfe4ec;
+}
+.round-banner.unavailable .eyebrow,
+.round-banner.unavailable p {
+  color: #768398;
+}
+.round-unavailable {
+  cursor: not-allowed;
+  color: #768398;
+  background: #fff;
 }
 .discussion-heading,
 .round-heading {
@@ -1359,6 +1423,12 @@ fieldset {
   .category-card {
     padding: 20px 18px 0;
   }
+  .insight-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .insight-card:last-child {
+    grid-column: 1 / -1;
+  }
   .enter-room {
     margin: 0 -18px;
     padding: 16px 18px;
@@ -1380,6 +1450,9 @@ fieldset {
   .category-description {
     min-height: 0;
   }
+  .discussion-question {
+    min-height: 0;
+  }
   .enter-room {
     margin: 0 -23px;
     padding: 16px 23px;
@@ -1387,6 +1460,9 @@ fieldset {
   .insight-grid {
     grid-template-columns: 1fr;
     gap: 16px;
+  }
+  .insight-card:last-child {
+    grid-column: auto;
   }
   .overview-heading h1,
   .discussion-heading h1,

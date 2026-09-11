@@ -1,4 +1,5 @@
 export type SourceMode = 'mock' | 'live' | 'snapshot';
+export const ANALYSIS_VERSION = 'analysis-v3-evidence-gaps';
 export type Source = {
   id: string;
   kind: 'answer' | 'article' | 'comment';
@@ -7,14 +8,16 @@ export type Source = {
   parentSourceId?: string;
   title: string;
   text: string;
+  textKind: 'summary' | 'comment';
   authorName: string | null;
   url: string | null;
-  relation: 'related' | 'unknown';
+  relation: 'same_question' | 'related' | 'unknown';
   collectedAt: string;
 };
 export type Evidence = { sourceId: string; excerpt: string };
 export type Category = {
   id: string;
+  analysisId: string;
   type: 'dimension' | 'stance';
   name: string;
   description: string;
@@ -24,21 +27,42 @@ export type Category = {
   sampleCount: number;
   sampleRatio: number;
 };
-export type Finding = { id: string; text: string; evidenceRefs: Evidence[] };
+export function hasSufficientRoundtableViews(categories: Category[]) {
+  return (
+    categories.filter(
+      (category) =>
+        category.type === 'stance' &&
+        category.sourceIds.length > 0 &&
+        category.evidenceRefs.length > 0,
+    ).length >= 2
+  );
+}
+export type Finding = {
+  id: string;
+  text: string;
+  categoryIds: string[];
+  evidenceRefs: Evidence[];
+};
 export type Analysis = {
   id: string;
   topicId: string;
   title: string;
   sourceMode: SourceMode;
   generationMode: 'scripted' | 'live' | 'cached';
+  scope: 'same_question_only' | 'related_topic';
+  queries: string[];
   collectedAt: string;
+  createdAt: string;
+  version: string;
+  model?: string;
+  promptVersion?: string;
   sampleCount: number;
   commentCount: number;
   sources: Source[];
   categories: Category[];
   commonGround: Finding[];
   disagreements: Finding[];
-  openQuestions: string[];
+  openQuestions: Finding[];
 };
 export type ContributionType =
   | 'opinion'
