@@ -10,6 +10,7 @@ import {
   Split,
   Quote,
   Sparkles,
+  HelpCircle,
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AppShell } from '@/components/app-shell';
@@ -17,9 +18,16 @@ import { Loading, ErrorState } from '@/components/states';
 import { EvidenceLinks, SourceDialog } from '@/components/source-dialog';
 import { useAnalysis } from '@/features/use-analysis';
 import type { Category } from '@/shared/types';
+import {
+  analysisModeLabel,
+  analysisScopeLabel,
+  canStartRoundtable,
+  representativeSourceIds,
+} from './overview-model';
 export default function Overview() {
   const { id, analysis: a, error } = useAnalysis();
   const icons = [Compass, Clock3, BriefcaseBusiness];
+  const roundtableReady = a ? canStartRoundtable(a.categories) : false;
   return (
     <AppShell
       page="overview"
@@ -41,11 +49,7 @@ export default function Overview() {
               <div>
                 <div className="tag-row">
                   <span className="tag">共同议题</span>
-                  <span className="subtle">
-                    {a.sourceMode === 'mock'
-                      ? '模拟样本 · 预置整理'
-                      : '知乎检索样本 · AI 整理'}
-                  </span>
+                  <span className="subtle">{analysisModeLabel(a)}</span>
                 </div>
                 <h1>{a.title}</h1>
                 <p className="muted">找到你关心的角度，听听不同的人怎么说。</p>
@@ -58,7 +62,8 @@ export default function Overview() {
             </div>
             <div className="sample-strip">
               <span>
-                仅代表当前采集样本；分类可重叠，比例不一定合计为 100%。
+                {analysisScopeLabel(a)}
+                ；仅代表当前采集样本。分类可重叠，比例不一定合计为 100%。
               </span>
               <SourceDialog
                 analysis={a}
@@ -80,8 +85,16 @@ export default function Overview() {
                     {a.categories
                       .filter((c) => c.type === type)
                       .map((c: Category, i) => {
-                        const Icon = icons[i % 3],
-                          s = a.sources.find((s) => s.id === c.sourceIds[0]);
+                        const Icon = icons[i % 3];
+                        const representativeIds = representativeSourceIds(c);
+                        const representativeSources = representativeIds.flatMap(
+                          (sourceId) => {
+                            const source = a.sources.find(
+                              (candidate) => candidate.id === sourceId,
+                            );
+                            return source ? [source] : [];
+                          },
+                        );
                         return (
                           <article
                             className={'category-card tone-' + (i % 3)}
@@ -97,9 +110,13 @@ export default function Overview() {
                             <p className="category-description">
                               {c.description}
                             </p>
+                            <p className="discussion-question">
+                              <span>待讨论</span>
+                              {c.discussionQuestion}
+                            </p>
                             <div className="count-line">
                               <b>
-                                {c.sampleCount} / {a.sampleCount} 条来源
+                                {a.sampleCount} 条主来源中有 {c.sampleCount} 条
                               </b>
                               <span>{Math.round(c.sampleRatio * 100)}%</span>
                             </div>
@@ -114,19 +131,33 @@ export default function Overview() {
                                 }}
                               />
                             </div>
-                            {s && (
-                              <blockquote>
-                                <Quote size={16} />
-                                <p>
-                                  {s.text.slice(0, 68)}
-                                  {s.text.length > 68 ? '…' : ''}
-                                </p>
+                            {representativeSources.length > 0 && (
+                              <div className="representative-materials">
+                                {representativeSources.map((source) => {
+                                  const excerpt = c.evidenceRefs.find(
+                                    (evidence) =>
+                                      evidence.sourceId === source.id,
+                                  )?.excerpt;
+                                  const preview = excerpt || source.text;
+                                  return (
+                                    <div
+                                      className="representative-item"
+                                      key={source.id}
+                                    >
+                                      <Quote size={15} />
+                                      <p>
+                                        {preview.slice(0, 68)}
+                                        {preview.length > 68 ? '…' : ''}
+                                      </p>
+                                    </div>
+                                  );
+                                })}
                                 <SourceDialog
                                   analysis={a}
-                                  sourceIds={c.sourceIds.slice(0, 2)}
-                                  label="代表材料"
+                                  sourceIds={representativeIds}
+                                  label={`展开 ${representativeIds.length} 条代表材料`}
                                 />
-                              </blockquote>
+                              </div>
                             )}
                             <Link
                               className="enter-room"
@@ -174,7 +205,7 @@ export default function Overview() {
               <section className="insight-card">
                 <div className="insight-title">
                   <Split size={19} />
-                  <h2>真正值得讨论的分歧</h2>
+                  <h2>主要分歧</h2>
                 </div>
                 {a.disagreements.length ? (
                   a.disagreements.map((f) => (
@@ -190,21 +221,58 @@ export default function Overview() {
                   <p className="muted">当前样本没有呈现出明确分歧。</p>
                 )}
               </section>
+              <section className="insight-card">
+                <div className="insight-title">
+                  <HelpCircle size={19} />
+                  <h2>还缺什么信息</h2>
+                </div>
+                {a.openQuestions.length ? (
+                  a.openQuestions.map((f) => (
+                    <div key={f.id}>
+                      <p>{f.text}</p>
+                      <EvidenceLinks
+                        analysis={a}
+                        evidenceRefs={f.evidenceRefs}
+                      />
+                      {!f.evidenceRefs.length && (
+                        <span className="legacy-evidence-note">
+                          旧版快照未保留这个问题的背景依据
+                        </span>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="muted">当前样本暂未整理出明确的待解问题。</p>
+                )}
+                <small>依据表示提问背景，不表示问题已经有答案。</small>
+              </section>
             </div>
-            <section className="round-banner">
+            <section
+              className={`round-banner${roundtableReady ? '' : ' unavailable'}`}
+            >
               <div>
                 <span className="eyebrow">
                   <MessagesSquare size={17} /> Agent 圆桌
                 </span>
                 <h2>让不同观点，坐下来谈一谈。</h2>
-                <p>从主张到回应，再到仍然缺少的证据。</p>
+                <p>
+                  {roundtableReady
+                    ? '从主张到回应，再到仍然缺少的证据。'
+                    : '当前材料还不足以形成两种有依据的观点，请先进入讨论区补充。'}
+                </p>
               </div>
-              <Link
-                className="button primary"
-                href={'/roundtable?analysis=' + encodeURIComponent(id)}
-              >
-                进入圆桌 <Sparkles size={17} />
-              </Link>
+              {roundtableReady ? (
+                <Link
+                  className="button primary"
+                  href={'/roundtable?analysis=' + encodeURIComponent(id)}
+                >
+                  进入圆桌 <Sparkles size={17} />
+                </Link>
+              ) : (
+                <span className="button round-unavailable" aria-disabled="true">
+                  圆桌条件不足
+                </span>
+              )}
             </section>
           </>
         )}

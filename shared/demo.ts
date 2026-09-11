@@ -6,6 +6,7 @@ import type {
   Roundtable,
   Source,
 } from './types';
+import { ANALYSIS_VERSION } from './types';
 export const DEMO_ID = 'demo-v1';
 export const TOPIC_TITLE = '普通人现在还有必要学习 AI 编程吗？';
 const collectedAt = '2026-09-08T00:00:00.000Z';
@@ -77,9 +78,10 @@ export const sources: Source[] = entries.map(
     kind: i === 6 ? 'article' : 'answer',
     title,
     text,
+    textKind: 'summary',
     authorName,
     url: null,
-    relation: 'unknown',
+    relation: 'same_question',
     collectedAt,
   }),
 );
@@ -95,9 +97,10 @@ export const sources: Source[] = entries.map(
     parentSourceId,
     title: '精选评论',
     text,
+    textKind: 'comment',
     authorName: null,
     url: null,
-    relation: 'unknown',
+    relation: 'same_question',
     collectedAt,
   }),
 );
@@ -114,6 +117,7 @@ const cat = (
   ids: string[],
 ): Category => ({
   id,
+  analysisId: DEMO_ID,
   type,
   name,
   description,
@@ -129,7 +133,11 @@ export const demoAnalysis: Analysis = {
   title: TOPIC_TITLE,
   sourceMode: 'mock',
   generationMode: 'scripted',
+  scope: 'same_question_only',
+  queries: [TOPIC_TITLE],
   collectedAt,
+  createdAt: collectedAt,
+  version: ANALYSIS_VERSION,
   sampleCount: 12,
   commentCount: 4,
   sources,
@@ -187,6 +195,7 @@ export const demoAnalysis: Analysis = {
     {
       id: 'f1',
       text: '具体目标与验证能力，是多份材料共同强调的条件。',
+      categoryIds: ['use', 'cost', 'career', 'start', 'foundation', 'intent'],
       evidenceRefs: [evidence('s1'), evidence('s2'), evidence('s3')],
     },
   ],
@@ -194,18 +203,27 @@ export const demoAnalysis: Analysis = {
     {
       id: 'f2',
       text: '可以边做边学到什么程度？何时必须先补基础？',
+      categoryIds: ['cost', 'career', 'foundation'],
       evidenceRefs: [evidence('s2'), evidence('s8')],
     },
     {
       id: 'f3',
       text: '有限的时间，值得投入一次尝试还是应该暂缓？',
+      categoryIds: ['use', 'cost', 'start', 'intent'],
       evidenceRefs: [evidence('s9'), evidence('s11')],
     },
   ],
-  openQuestions: ['不同基础的学习者，完成同一个小任务各需要多少时间？'],
+  openQuestions: [
+    {
+      id: 'f4',
+      text: '不同基础的学习者，完成同一个小任务各需要多少时间？',
+      categoryIds: ['cost'],
+      evidenceRefs: [evidence('s9'), evidence('s12')],
+    },
+  ],
 };
 export function seedPosts(analysis: Analysis): Post[] {
-  return analysis.categories.flatMap((category, i) => [
+  return analysis.categories.flatMap((category) => [
     {
       id: 'seed-' + category.id + '-1',
       analysisId: analysis.id,

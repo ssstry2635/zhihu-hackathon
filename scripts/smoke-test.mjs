@@ -7,14 +7,16 @@ assert(
 function client() {
   let cookie = '';
   return async (path, method = 'GET', data, expected = 200) => {
-    const response = await fetch(base + '/api' + path, {
+    const options = {
       method,
       headers: {
         'Content-Type': 'application/json',
         ...(cookie ? { Cookie: cookie } : {}),
       },
-      body: data === undefined ? undefined : JSON.stringify(data),
-    });
+    };
+    if (method !== 'GET' && data !== undefined)
+      options.body = JSON.stringify(data);
+    const response = await fetch(base + '/api' + path, options);
     const set = response.headers.get('set-cookie');
     if (set) cookie = set.split(';')[0];
     const value = await response.json();
@@ -35,10 +37,36 @@ const analysis = await a('/analyses/demo-v1');
 assert.equal(analysis.sampleCount, 12);
 assert.equal(analysis.commentCount, 4);
 assert.equal(analysis.sources.length, 16);
+assert.equal(analysis.scope, 'same_question_only');
+assert.equal(analysis.version, 'analysis-v3-evidence-gaps');
+assert(
+  analysis.sources.every(
+    (source) =>
+      source.textKind === (source.kind === 'comment' ? 'comment' : 'summary'),
+  ),
+);
 assert(
   analysis.categories.every(
     (c) => c.sampleRatio === c.sampleCount / analysis.sampleCount,
   ),
+);
+assert(
+  analysis.categories.every((category) => category.analysisId === analysis.id),
+);
+assert(
+  [
+    ...analysis.commonGround,
+    ...analysis.disagreements,
+    ...analysis.openQuestions,
+  ]
+    .flatMap((finding) => finding.evidenceRefs)
+    .every((evidence) =>
+      analysis.sources.some(
+        (source) =>
+          source.id === evidence.sourceId &&
+          source.text.includes(evidence.excerpt),
+      ),
+    ),
 );
 const va = await a('/visitors/session', 'POST', { displayName: '测试访客甲' });
 const vb = await b('/visitors/session', 'POST', { displayName: '测试访客乙' });
@@ -55,7 +83,7 @@ const created = await a(path, 'POST', payload, 201);
 assert.equal(created.authorId, va.id);
 const duplicate = await a(path, 'POST', payload, 201);
 assert.equal(created.id, duplicate.id);
-let list = await b(path);
+const list = await b(path);
 assert(
   list.posts.some((p) => p.id === created.id),
   '另一访客必须能读取已发布帖子',
@@ -131,6 +159,7 @@ const follow = await a('/roundtables/' + ra.id + '/followups', 'POST', {
 });
 assert(follow.followupUsed);
 assert.equal(follow.messages.length, 10);
+assert(follow.messages.at(-1).content.includes(analysis.openQuestions[0].text));
 await a(
   '/roundtables/' + ra.id + '/followups',
   'POST',
@@ -174,6 +203,7 @@ console.log(
       checks: [
         '四页可访问',
         '样本统计',
+        'B 分类契约与待解问题依据',
         '访客隔离与身份恢复',
         '跨访客发帖回复',
         '重复提交去重',

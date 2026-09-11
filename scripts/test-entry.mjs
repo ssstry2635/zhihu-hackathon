@@ -148,7 +148,13 @@ const modelFixture = {
   ],
   commonGround: [],
   disagreements: [],
-  openQuestions: ['如何衡量时间成本？'],
+  openQuestions: [
+    {
+      text: '如何衡量时间成本？',
+      categoryIds: ['cost'],
+      evidenceRefs: [{ sourceId: 'answer:fixture-1', excerpt: '学习需要成本' }],
+    },
+  ],
 };
 function success(url, init) {
   assert.equal(new URL(url).origin, 'https://developer.zhihu.com');
@@ -426,7 +432,7 @@ await check(
   },
 );
 await check(
-  'three topics: coherent snapshots, scripted rounds, followups and private history',
+  'three topics: coherent snapshots, insufficient-view gate, scripted rounds, followups and private history',
   async () => {
     clear();
     upstream = () => {
@@ -470,6 +476,43 @@ await check(
       const analysis = await a('/analyses/' + result.resultId);
       assert.equal(analysis.title, topic.title);
       assert.equal(analysis.topicId, topic.id);
+      assert.equal(analysis.scope, 'same_question_only');
+      assert(analysis.queries.includes(topic.title));
+      assert(analysis.version);
+      assert(
+        analysis.sources.every(
+          (source) =>
+            source.textKind ===
+            (source.kind === 'comment' ? 'comment' : 'summary'),
+        ),
+      );
+      assert(
+        analysis.categories.every(
+          (category) => category.analysisId === analysis.id,
+        ),
+      );
+      for (const finding of [
+        ...analysis.commonGround,
+        ...analysis.disagreements,
+        ...analysis.openQuestions,
+      ]) {
+        assert(finding.categoryIds.length > 0);
+        assert(finding.evidenceRefs.length > 0);
+        assert(
+          finding.categoryIds.every((categoryId) =>
+            analysis.categories.some((category) => category.id === categoryId),
+          ),
+        );
+        assert(
+          finding.evidenceRefs.every((evidence) =>
+            analysis.sources.some(
+              (source) =>
+                source.id === evidence.sourceId &&
+                source.text.includes(evidence.excerpt),
+            ),
+          ),
+        );
+      }
       assert.equal(
         validation.validateAnalysis(
           analysis,
@@ -503,6 +546,33 @@ await check(
       assert(follow.messages.at(-1).content.includes(topic.title));
       assert.equal(follow.messages.length, 10);
     }
+    const insufficient = structuredClone(registry.topics[0].preset);
+    insufficient.id = 'synthetic-insufficient-evidence';
+    insufficient.categories = insufficient.categories
+      .filter(
+        (category) =>
+          category.type === 'dimension' ||
+          ['start', 'foundation'].includes(category.id),
+      )
+      .map((category) => ({
+        ...category,
+        analysisId: insufficient.id,
+        evidenceRefs: category.id === 'foundation' ? [] : category.evidenceRefs,
+      }));
+    sql
+      .prepare('INSERT INTO analyses(id,payload,created_at) VALUES (?,?,?)')
+      .run(
+        insufficient.id,
+        JSON.stringify(insufficient),
+        insufficient.createdAt,
+      );
+    const blockedRound = await a(
+      '/analyses/' + insufficient.id + '/roundtables',
+      'POST',
+      {},
+      422,
+    );
+    assert.equal(blockedRound.error.code, 'INSUFFICIENT_VIEWS');
     assert.equal((await a('/history')).results.length, 3);
     assert.equal((await b('/history')).results.length, 0);
     await b('/analyses/' + registry.topics[1].preset.id);
@@ -689,6 +759,13 @@ await check(
         .filter((s) => s.kind === 'comment')
         .every((c) => sources.some((p) => p.id === c.parentSourceId)),
     );
+    assert(
+      sources.every(
+        (source) =>
+          source.textKind ===
+          (source.kind === 'comment' ? 'comment' : 'summary'),
+      ),
+    );
     budgetSetup({ ZHIHU_DAILY_CALL_LIMIT: 'not-a-number' });
     await assert.rejects(zhihu.searchZhihu('测试', 'a'), {
       code: 'BUDGET_CONFIG_INVALID',
@@ -715,6 +792,11 @@ await check(
     );
     assert.equal(saved.topicId, 'ai-homework');
     assert.equal(saved.title, topics.topics[2].title);
+    assert.equal(saved.scope, 'related_topic');
+    assert.equal(saved.version, 'analysis-v3-evidence-gaps');
+    assert.equal(saved.promptVersion, 'analysis-prompt-v3');
+    assert.equal(saved.categories[0].analysisId, saved.id);
+    assert(saved.openQuestions[0].evidenceRefs.length > 0);
     assert.equal((await history.recentResults('owner'))[0].id, done.resultId);
     assert.deepEqual(
       sql
@@ -745,6 +827,46 @@ await check(
         ],
       });
     const round = await rounds.startRound(real.id, 'round-owner');
+    assert.equal(round.generationMode, 'live');
+    const legacyTemplate = JSON.parse(
+      sql
+        .prepare('SELECT payload FROM round_templates WHERE analysis_id=?')
+        .get(real.id).payload,
+    );
+    legacyTemplate.commonGround.forEach(
+      (finding) => delete finding.categoryIds,
+    );
+    legacyTemplate.disagreements.forEach(
+      (finding) => delete finding.categoryIds,
+    );
+    sql
+      .prepare('UPDATE round_templates SET payload=? WHERE analysis_id=?')
+      .run(JSON.stringify(legacyTemplate), real.id);
+    const cachedRound = await rounds.startRound(real.id, 'round-cache-reader');
+    assert.equal(cachedRound.generationMode, 'cached');
+    assert(
+      [...cachedRound.commonGround, ...cachedRound.disagreements].every(
+        (finding) => finding.categoryIds.length > 0,
+      ),
+    );
+    const legacyRound = JSON.parse(
+      sql.prepare('SELECT payload FROM rounds WHERE id=?').get(cachedRound.id)
+        .payload,
+    );
+    legacyRound.commonGround.forEach((finding) => delete finding.categoryIds);
+    legacyRound.disagreements.forEach((finding) => delete finding.categoryIds);
+    sql
+      .prepare('UPDATE rounds SET payload=? WHERE id=?')
+      .run(JSON.stringify(legacyRound), cachedRound.id);
+    const upgradedRound = await rounds.getRound(
+      cachedRound.id,
+      'round-cache-reader',
+    );
+    assert(
+      [...upgradedRound.commonGround, ...upgradedRound.disagreements].every(
+        (finding) => finding.categoryIds.length > 0,
+      ),
+    );
     upstream = () =>
       Response.json({
         choices: [

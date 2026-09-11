@@ -35,6 +35,15 @@ export async function checkNavigation(page, origin) {
   assert.ok(new URL(page.url()).searchParams.get('gap'));
   checkpoints.push('圆桌问题 → 对应讨论区');
   await page.getByRole('link',{name:'返回观点总览',exact:true}).click();
+  await page.getByRole('heading',{name:'还缺什么信息',exact:true}).waitFor();
+  await page.getByText('待讨论',{exact:true}).first().waitFor();
+  await page.getByRole('button',{name:/展开 [12] 条代表材料/}).first().click();
+  await page.getByRole('dialog').waitFor();
+  await page.keyboard.press('Escape');
+  await page.getByRole('dialog').waitFor({state:'hidden'});
+  await page.getByRole('button',{name:'按观点立场',exact:true}).click();
+  await page.getByRole('heading',{name:'支持从具体任务入手',exact:true}).waitFor();
+  checkpoints.push('总览问题、代表材料、待解信息与立场切换');
   await page.getByRole('link',{name:'进入讨论区',exact:true}).first().click();
   await page.getByRole('button',{name:'发布观点',exact:true}).waitFor();
   checkpoints.push('总览 → 分类讨论区');

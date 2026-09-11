@@ -3,10 +3,10 @@ import type { AnalysisJob, AnalysisStart, JobStage } from '@/shared/jobs';
 import { findTopic } from '@/shared/topics';
 import { recordResult } from './history';
 import { assert, errorInfo } from './http';
-import { buildLiveAnalysis } from './analysis';
+import { ANALYSIS_DATA_VERSION, buildLiveAnalysis } from './analysis';
 import { getZhihuConfig, assertLiveReady, SKILL_VERSION } from './zhihu';
 // Coordinate this version with B when normalization/classification contracts change.
-const DATA_VERSION = 'analysis-v2-budgeted';
+const DATA_VERSION = ANALYSIS_DATA_VERSION;
 const RUN_TIMEOUT_MS = 120_000;
 const QUEUED_TIMEOUT_MS = 600_000;
 const CACHE_MS = 3_600_000;

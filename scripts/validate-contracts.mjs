@@ -69,6 +69,7 @@ const zhihu = await moduleAt('lib/server/zhihu.ts');
 const mock = await moduleAt('shared/demo.ts');
 const analysis = await moduleAt('lib/server/analysis.ts');
 const round = await moduleAt('lib/server/roundtable.ts');
+const overview = await moduleAt('features/overview/overview-model.ts');
 const result = zhihu.normalizeSearch({
   Code: 0,
   Data: {
@@ -93,6 +94,9 @@ const result = zhihu.normalizeSearch({
 });
 assert.equal(result.length, 2);
 assert.equal(result[0].kind, 'answer');
+assert.equal(result[0].textKind, 'summary');
+assert.equal(result[1].textKind, 'comment');
+assert.equal(result[0].relation, 'unknown');
 assert.equal(result[1].authorName, null);
 assert.equal(result[1].parentSourceId, result[0].id);
 assert(result[0].url.endsWith('utm_source=test'));
@@ -106,6 +110,11 @@ const valid = analysis.validateAnalysis(
 assert.equal(valid.sampleCount, 12);
 assert.equal(valid.commentCount, 4);
 assert.equal(valid.categories[0].sampleRatio, 4 / 12);
+assert.equal(valid.categories[0].analysisId, 'live-test');
+assert.equal(valid.version, analysis.ANALYSIS_DATA_VERSION);
+assert.equal(valid.promptVersion, analysis.ANALYSIS_PROMPT_VERSION);
+assert(valid.openQuestions[0].evidenceRefs.length > 0);
+assert(valid.openQuestions[0].categoryIds.includes('cost'));
 const counts = structuredClone(mock.demoAnalysis);
 counts.categories[0].sampleCount = 999;
 assert.equal(
@@ -122,6 +131,103 @@ const missing = structuredClone(mock.demoAnalysis);
 missing.categories[0].sourceIds.push('missing');
 assert.throws(() =>
   analysis.validateAnalysis(missing, mock.sources, 't', mock.TOPIC_TITLE),
+);
+const bogusQuestion = structuredClone(mock.demoAnalysis);
+bogusQuestion.openQuestions[0].evidenceRefs[0].excerpt = '不存在的问题背景';
+assert.throws(() =>
+  analysis.validateAnalysis(bogusQuestion, mock.sources, 't', mock.TOPIC_TITLE),
+);
+const wrongFindingCategory = structuredClone(mock.demoAnalysis);
+wrongFindingCategory.openQuestions[0].categoryIds = ['missing'];
+assert.throws(() =>
+  analysis.validateAnalysis(
+    wrongFindingCategory,
+    mock.sources,
+    't',
+    mock.TOPIC_TITLE,
+  ),
+);
+const wrongTextKind = structuredClone(mock.sources);
+wrongTextKind[0].textKind = 'comment';
+assert.throws(() =>
+  analysis.validateAnalysis(
+    mock.demoAnalysis,
+    wrongTextKind,
+    't',
+    mock.TOPIC_TITLE,
+  ),
+);
+const wrongSourceKind = structuredClone(mock.sources);
+wrongSourceKind[0].kind = 'question';
+assert.throws(() =>
+  analysis.validateAnalysis(
+    mock.demoAnalysis,
+    wrongSourceKind,
+    't',
+    mock.TOPIC_TITLE,
+  ),
+);
+const orphanComment = structuredClone(mock.sources);
+orphanComment.at(-1).parentSourceId = 'missing';
+assert.throws(() =>
+  analysis.validateAnalysis(
+    mock.demoAnalysis,
+    orphanComment,
+    't',
+    mock.TOPIC_TITLE,
+  ),
+);
+const legacy = structuredClone(mock.demoAnalysis);
+delete legacy.scope;
+delete legacy.queries;
+delete legacy.createdAt;
+delete legacy.version;
+legacy.sources.forEach((source) => delete source.textKind);
+legacy.categories.forEach((category) => delete category.analysisId);
+legacy.commonGround.forEach((finding) => delete finding.categoryIds);
+legacy.openQuestions = ['旧版待解问题'];
+const upgraded = analysis.upgradeAnalysis(legacy);
+assert.equal(upgraded.sources[0].textKind, 'summary');
+assert.equal(upgraded.categories[0].analysisId, legacy.id);
+assert.equal(upgraded.openQuestions[0].text, '旧版待解问题');
+assert.equal(upgraded.openQuestions[0].evidenceRefs.length, 0);
+assert.equal(upgraded.version, 'legacy-v2-upgraded');
+assert.equal(
+  overview.analysisModeLabel(mock.demoAnalysis),
+  '模拟样本 · 预置整理',
+);
+assert.equal(
+  overview.analysisModeLabel({
+    sourceMode: 'snapshot',
+    generationMode: 'cached',
+  }),
+  '知乎检索快照 · 缓存整理',
+);
+assert.equal(
+  overview
+    .representativeSourceIds({
+      ...mock.demoAnalysis.categories[0],
+      sourceIds: ['s1', 's2', 's3'],
+      evidenceRefs: [mock.evidence('s2'), mock.evidence('s2')],
+    })
+    .join(','),
+  's2,s1',
+);
+assert.equal(overview.canStartRoundtable(mock.demoAnalysis.categories), true);
+const incompleteStances = mock.demoAnalysis.categories
+  .filter((category) => category.type === 'stance')
+  .slice(0, 2)
+  .map((category, i) =>
+    i === 1 ? { ...category, evidenceRefs: [] } : category,
+  );
+assert.equal(overview.canStartRoundtable(incompleteStances), false);
+assert.equal(
+  overview.canStartRoundtable(
+    mock.demoAnalysis.categories.filter((category) =>
+      ['use', 'start'].includes(category.id),
+    ),
+  ),
+  false,
 );
 const template = mock.makeDemoRound('template', 'tester');
 assert.equal(
@@ -140,12 +246,16 @@ console.log(
       status: 'passed',
       checks: [
         '官方摘要标准化',
+        '来源文本类型与父来源校验',
         '评论作者不冒用',
         '来源去重',
         '保留溯源链接',
         '程序计算比例',
         '伪造引用拒绝',
         '无效来源拒绝',
+        '待解问题证据与分类关联校验',
+        '旧快照无伪造依据地升级',
+        '总览模式、代表材料与圆桌门禁',
         '圆桌阶段和回应校验',
         '重复观点角色拒绝',
       ],

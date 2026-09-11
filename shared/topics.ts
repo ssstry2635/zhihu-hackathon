@@ -7,6 +7,7 @@ import type {
   Roundtable,
   Source,
 } from './types';
+import { ANALYSIS_VERSION } from './types';
 export type Topic = {
   id: string;
   title: string;
@@ -203,15 +204,17 @@ const scenarios: Scenario[] = [
 ];
 function makeAnalysis(scenario: Scenario): Analysis {
   const collectedAt = '2026-09-09T00:00:00.000Z';
+  const analysisId = 'demo-' + scenario.id + '-v1';
   const sources: Source[] = scenario.entries.map(
     ([authorName, title, text], i) => ({
       id: scenario.id + ':s' + (i + 1),
       kind: 'answer',
       title,
       text,
+      textKind: 'summary',
       authorName,
       url: null,
-      relation: 'unknown',
+      relation: 'same_question',
       collectedAt,
     }),
   );
@@ -222,9 +225,10 @@ function makeAnalysis(scenario: Scenario): Analysis {
       parentSourceId: sources[parent].id,
       title: '精选评论',
       text,
+      textKind: 'comment',
       authorName: null,
       url: null,
-      relation: 'unknown',
+      relation: 'same_question',
       collectedAt,
     }),
   );
@@ -235,6 +239,7 @@ function makeAnalysis(scenario: Scenario): Analysis {
   const categories: Category[] = [
     ...scenario.dimensions.map(([id, name, question, refs]) => ({
       id,
+      analysisId,
       type: 'dimension' as const,
       name,
       description: question,
@@ -246,6 +251,7 @@ function makeAnalysis(scenario: Scenario): Analysis {
     })),
     ...scenario.stances.map(([id, name, description, refs]) => ({
       id,
+      analysisId,
       type: 'stance' as const,
       name,
       description,
@@ -257,12 +263,16 @@ function makeAnalysis(scenario: Scenario): Analysis {
     })),
   ];
   return {
-    id: 'demo-' + scenario.id + '-v1',
+    id: analysisId,
     topicId: scenario.id,
     title: scenario.title,
     sourceMode: 'mock',
     generationMode: 'scripted',
+    scope: 'same_question_only',
+    queries: [scenario.title],
     collectedAt,
+    createdAt: collectedAt,
+    version: ANALYSIS_VERSION,
     sampleCount: scenario.entries.length,
     commentCount: scenario.comments.length,
     sources,
@@ -271,6 +281,7 @@ function makeAnalysis(scenario: Scenario): Analysis {
       {
         id: 'common',
         text: scenario.common,
+        categoryIds: categories.map((category) => category.id),
         evidenceRefs: [evidence(0), evidence(2), evidence(5)],
       },
     ],
@@ -278,10 +289,16 @@ function makeAnalysis(scenario: Scenario): Analysis {
       {
         id: 'difference',
         text: scenario.disagreement,
+        categoryIds: scenario.stances.map((stance) => stance[0]),
         evidenceRefs: [evidence(0), evidence(1), evidence(4)],
       },
     ],
-    openQuestions: scenario.dimensions.map((d) => d[2]),
+    openQuestions: scenario.dimensions.map(([id, , question, refs]) => ({
+      id: 'open-' + id,
+      text: question,
+      categoryIds: [id],
+      evidenceRefs: refs.slice(0, 2).map(evidence),
+    })),
   };
 }
 export const topics: Topic[] = [
