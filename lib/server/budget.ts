@@ -114,6 +114,21 @@ export async function reserveCall(
     429,
   );
 }
+// Read-only rolling-window count used to pace multi-round collection inside
+// one analysis job so it does not exhaust the per-minute visitor budget that
+// the classification call still needs a slot from.
+export async function recentVisitorCalls(
+  visitorId: string,
+  windowMs: number,
+) {
+  const row = await getDb()
+    .prepare(
+      'SELECT COUNT(*) AS n FROM upstream_calls WHERE visitor_id=? AND started_at>?',
+    )
+    .bind(visitorId, Date.now() - windowMs)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
 export async function releaseCall(id: string) {
   await getDb()
     .prepare(

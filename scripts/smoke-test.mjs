@@ -13,7 +13,9 @@ function client() {
         'Content-Type': 'application/json',
         ...(cookie ? { Cookie: cookie } : {}),
       },
-      body: data === undefined ? undefined : JSON.stringify(data),
+      ...(method === 'GET' || data === undefined
+        ? {}
+        : { body: JSON.stringify(data) }),
     });
     const set = response.headers.get('set-cookie');
     if (set) cookie = set.split(';')[0];
@@ -55,7 +57,7 @@ const created = await a(path, 'POST', payload, 201);
 assert.equal(created.authorId, va.id);
 const duplicate = await a(path, 'POST', payload, 201);
 assert.equal(created.id, duplicate.id);
-let list = await b(path);
+const list = await b(path);
 assert(
   list.posts.some((p) => p.id === created.id),
   '另一访客必须能读取已发布帖子',

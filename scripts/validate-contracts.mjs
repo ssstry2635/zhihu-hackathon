@@ -115,8 +115,22 @@ assert.equal(
 );
 const bogus = structuredClone(mock.demoAnalysis);
 bogus.categories[0].evidenceRefs[0].excerpt = '不存在于来源的句子';
-assert.throws(() =>
-  analysis.validateAnalysis(bogus, mock.sources, 't', mock.TOPIC_TITLE),
+const repaired = analysis.validateAnalysis(
+  bogus,
+  mock.sources,
+  't',
+  mock.TOPIC_TITLE,
+);
+assert.notEqual(
+  repaired.categories[0].evidenceRefs[0].excerpt,
+  '不存在于来源的句子',
+);
+assert(
+  mock.sources
+    .find(
+      (source) => source.id === repaired.categories[0].evidenceRefs[0].sourceId,
+    )
+    .text.includes(repaired.categories[0].evidenceRefs[0].excerpt),
 );
 const missing = structuredClone(mock.demoAnalysis);
 missing.categories[0].sourceIds.push('missing');
@@ -124,9 +138,23 @@ assert.throws(() =>
   analysis.validateAnalysis(missing, mock.sources, 't', mock.TOPIC_TITLE),
 );
 const template = mock.makeDemoRound('template', 'tester');
-assert.equal(
-  round.validateRound(template, mock.demoAnalysis).messages.length,
-  8,
+const validatedRound = round.validateRound(template, mock.demoAnalysis);
+assert.equal(validatedRound.messages.length, 8);
+assert.equal(validatedRound.status, 'ready');
+assert.equal(validatedRound.promptVersion, round.ROUND_PROMPT_VERSION);
+assert(validatedRound.createdAt);
+assert(validatedRound.roles.every((role) => role.sourceIds.length > 0));
+assert(
+  validatedRound.messages.every(
+    (message, order) =>
+      message.roundtableId === 'template' && message.order === order,
+  ),
+);
+assert(
+  validatedRound.gaps.every(
+    (gap) =>
+      gap.roundtableId === 'template' && gap.contextEvidenceRefs.length > 0,
+  ),
 );
 const wrongReply = structuredClone(template);
 wrongReply.messages[4].replyToMessageId = 'future-message';
@@ -134,6 +162,28 @@ assert.throws(() => round.validateRound(wrongReply, mock.demoAnalysis));
 const wrongRole = structuredClone(template);
 wrongRole.roles[2].categoryId = 'start';
 assert.throws(() => round.validateRound(wrongRole, mock.demoAnalysis));
+const crossCategoryEvidence = structuredClone(template);
+const viewpointMessage = crossCategoryEvidence.messages.find(
+  (message) => message.speakerRoleId !== 'host',
+);
+const viewpointRole = crossCategoryEvidence.roles.find(
+  (role) => role.id === viewpointMessage.speakerRoleId,
+);
+const unrelatedSource = mock.demoAnalysis.sources.find(
+  (source) => !viewpointRole.sourceIds.includes(source.id),
+);
+viewpointMessage.evidenceRefs = [
+  {
+    sourceId: unrelatedSource.id,
+    excerpt: unrelatedSource.excerpt,
+  },
+];
+assert.throws(() =>
+  round.validateRound(crossCategoryEvidence, mock.demoAnalysis),
+);
+const missingGapEvidence = structuredClone(template);
+missingGapEvidence.gaps[0].contextEvidenceRefs = [];
+assert.throws(() => round.validateRound(missingGapEvidence, mock.demoAnalysis));
 console.log(
   JSON.stringify(
     {
@@ -144,10 +194,13 @@ console.log(
         '来源去重',
         '保留溯源链接',
         '程序计算比例',
-        '伪造引用拒绝',
+        '模型引用由服务器原文替换',
         '无效来源拒绝',
         '圆桌阶段和回应校验',
         '重复观点角色拒绝',
+        '角色材料边界校验',
+        '待解问题背景依据校验',
+        '圆桌持久化字段契约',
       ],
     },
     null,

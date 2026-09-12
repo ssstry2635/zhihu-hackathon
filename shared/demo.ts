@@ -205,7 +205,7 @@ export const demoAnalysis: Analysis = {
   openQuestions: ['不同基础的学习者，完成同一个小任务各需要多少时间？'],
 };
 export function seedPosts(analysis: Analysis): Post[] {
-  return analysis.categories.flatMap((category, i) => [
+  return analysis.categories.flatMap((category) => [
     {
       id: 'seed-' + category.id + '-1',
       analysisId: analysis.id,
@@ -248,12 +248,19 @@ export function seedPosts(analysis: Analysis): Post[] {
 }
 export function makeDemoRound(id: string, visitorId: string): Roundtable {
   const e = (s: string) => [evidence(s)];
+  const roleSources = (categoryId: string) =>
+    demoAnalysis.categories.find((category) => category.id === categoryId)
+      ?.sourceIds ?? [];
   return {
     id,
     analysisId: DEMO_ID,
     visitorId,
+    status: 'ready',
     generationMode: 'scripted',
+    model: null,
+    promptVersion: 'roundtable-script-v2',
     followupUsed: false,
+    createdAt: new Date().toISOString(),
     roles: [
       {
         id: 'host',
@@ -261,6 +268,7 @@ export function makeDemoRound(id: string, visitorId: string): Roundtable {
         categoryId: null,
         description: '梳理议题与证据',
         color: 'host',
+        sourceIds: demoAnalysis.sources.map((source) => source.id),
       },
       {
         id: 'practice',
@@ -268,6 +276,7 @@ export function makeDemoRound(id: string, visitorId: string): Roundtable {
         categoryId: 'start',
         description: '从具体任务入手',
         color: 'blue',
+        sourceIds: roleSources('start'),
       },
       {
         id: 'basics',
@@ -275,6 +284,7 @@ export function makeDemoRound(id: string, visitorId: string): Roundtable {
         categoryId: 'foundation',
         description: '强调验证与基础',
         color: 'green',
+        sourceIds: roleSources('foundation'),
       },
       {
         id: 'purpose',
@@ -282,75 +292,92 @@ export function makeDemoRound(id: string, visitorId: string): Roundtable {
         categoryId: 'intent',
         description: '先判断投入是否值得',
         color: 'amber',
+        sourceIds: roleSources('intent'),
       },
     ],
     messages: [
       {
         id: 'm1',
+        roundtableId: id,
         speakerRoleId: 'host',
         phase: 'opening',
         content:
           '今天我们讨论的，是普通人学习 AI 编程的价值。请分别说明自己的主张，以及它适用的条件。',
         evidenceRefs: [],
+        order: 0,
       },
       {
         id: 'm2',
+        roundtableId: id,
         speakerRoleId: 'practice',
         phase: 'statement',
         content:
           '有一个具体的小任务，就值得开始尝试。学习不一定要以转行作为目标，让重复劳动少一点也是实际收益。',
         evidenceRefs: e('s1'),
+        order: 1,
       },
       {
         id: 'm3',
+        roundtableId: id,
         speakerRoleId: 'basics',
         phase: 'statement',
         content:
           '我支持尝试，但“生成成功”不能等同“结果正确”。至少要理解如何测试、发现错误和验证输出，尤其涉及重要数据时。',
         evidenceRefs: e('s2'),
+        order: 2,
       },
       {
         id: 'm4',
+        roundtableId: id,
         speakerRoleId: 'purpose',
         phase: 'statement',
         content:
           '我关心的是投入条件。如果没有自己的需求，仅仅因为焦虑而学习，可能很快失去动力；暂缓也可以是一种合理选择。',
         evidenceRefs: e('s3'),
+        order: 3,
       },
       {
         id: 'm5',
+        roundtableId: id,
         speakerRoleId: 'practice',
         phase: 'exchange',
         replyToMessageId: 'm3',
         content:
-          '验证很重要，但基础是否一定要先全部学完？材料里也有人在项目中遇到问题再补知识。我们争的可能是学习顺序，而不是要不要验证。',
-        evidenceRefs: e('s8'),
+          '验证很重要，但材料里也有人从自己熟悉的工作流程切入，先把问题描述清楚再尝试实现。我们争的可能是先找任务还是先学基础，并不是要不要验证。',
+        evidenceRefs: e('s7'),
+        order: 4,
       },
       {
         id: 'm6',
+        roundtableId: id,
         speakerRoleId: 'basics',
         phase: 'exchange',
         replyToMessageId: 'm5',
         content:
           '可以边做边学，但任务风险要有限。做个人工具和准备求职不能用同一个完成标准，后者还要证明测试、维护与协作能力。',
         evidenceRefs: e('s6'),
+        order: 5,
       },
       {
         id: 'm7',
+        roundtableId: id,
         speakerRoleId: 'purpose',
         phase: 'exchange',
         replyToMessageId: 'm2',
         content:
           '那可以把建议收窄为一次小范围尝试。记录一个周末的时间和成果，再决定是否继续，比直接要求所有人长期投入更具体。',
         evidenceRefs: e('s9'),
+        order: 6,
       },
       {
         id: 'm8',
+        roundtableId: id,
         speakerRoleId: 'host',
         phase: 'summary',
         content:
           '共同点是明确目标，并对结果负责。分歧在于基础学习的时机，以及有限时间是否值得投入。材料仍缺少不同起点学习者的可比较记录，这可以交给真人讨论继续补充。',
         evidenceRefs: [evidence('s2'), evidence('s9'), evidence('s12')],
+        order: 7,
       },
     ],
     commonGround: demoAnalysis.commonGround,
@@ -358,14 +385,18 @@ export function makeDemoRound(id: string, visitorId: string): Roundtable {
     gaps: [
       {
         id: id + '-time',
+        roundtableId: id,
         question: '零基础完成第一个小任务，实际投入了多少时间？',
         categoryId: 'cost',
+        contextEvidenceRefs: e('s9'),
         supplementCount: 0,
       },
       {
         id: id + '-verify',
+        roundtableId: id,
         question: '你用什么方法确认 AI 生成的结果是正确的？',
         categoryId: 'career',
+        contextEvidenceRefs: e('s12'),
         supplementCount: 0,
       },
     ],

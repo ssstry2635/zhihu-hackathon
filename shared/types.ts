@@ -29,6 +29,7 @@ export type Analysis = {
   id: string;
   topicId: string;
   title: string;
+  sourceUrl?: string | null;
   sourceMode: SourceMode;
   generationMode: 'scripted' | 'live' | 'cached';
   collectedAt: string;
@@ -68,26 +69,41 @@ export type Role = {
   categoryId: string | null;
   description: string;
   color: string;
+  sourceIds: string[];
 };
 export type RoundMessage = {
   id: string;
+  roundtableId: string;
   speakerRoleId: string;
-  phase: 'opening' | 'statement' | 'exchange' | 'summary' | 'followup';
+  phase: 'opening' | 'statement' | 'exchange' | 'summary' | 'followup' | 'user';
   content: string;
   replyToMessageId?: string;
   evidenceRefs: Evidence[];
+  order: number;
 };
 export type Gap = {
   id: string;
+  roundtableId: string;
   question: string;
   categoryId: string;
+  contextEvidenceRefs: Evidence[];
   supplementCount: number;
+};
+export type RoundScheduler = {
+  mode: 'scripted' | 'autonomous';
+  state: 'running' | 'complete' | 'failed';
+  turn: number;
+  lastApplicantRoleIds?: string[];
+  lastSelectedRoleId?: string;
 };
 export type Roundtable = {
   id: string;
   analysisId: string;
   visitorId: string;
+  status: 'preparing' | 'ready' | 'failed';
   generationMode: 'scripted' | 'live' | 'cached';
+  model: string | null;
+  promptVersion: string;
   roles: Role[];
   messages: RoundMessage[];
   gaps: Gap[];
@@ -95,6 +111,8 @@ export type Roundtable = {
   disagreements: Finding[];
   followupUsed: boolean;
   followupState?: 'pending' | 'failed';
+  scheduler?: RoundScheduler;
+  createdAt: string;
 };
 export type Visitor = { id: string; displayName: string };
 export type AppConfig = {
@@ -104,6 +122,8 @@ export type AppConfig = {
   skillVersion: string;
   model: string | null;
   searchLimit: number;
+  searchRounds: number;
+  searchTarget: number;
   cacheMinutes: number;
 };
 export const contributionLabels: Record<ContributionType, string> = {

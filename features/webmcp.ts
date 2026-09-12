@@ -12,7 +12,7 @@ type Tool = {
   description: string;
   inputSchema: object;
   annotations: { readOnlyHint: boolean; untrustedContentHint: boolean };
-  execute: (input: unknown) => unknown | Promise<unknown>;
+  execute: (input: unknown) => Promise<unknown>;
 };
 type Context = {
   registerTool: (
@@ -27,7 +27,9 @@ export function useDiscussionTools(state: {
   stageDraft: (content: string, type: ContributionType) => void;
 }) {
   const current = useRef(state);
-  current.current = state;
+  useEffect(() => {
+    current.current = state;
+  }, [state]);
   useEffect(() => {
     const context = (document as Document & { modelContext?: Context })
       .modelContext;
@@ -44,7 +46,7 @@ export function useDiscussionTools(state: {
           additionalProperties: false,
         },
         annotations: { readOnlyHint: true, untrustedContentHint: true },
-        execute(input) {
+        async execute(input) {
           if (!input || typeof input !== 'object' || Object.keys(input).length)
             throw new Error('不接受参数。');
           const s = current.current;
@@ -53,14 +55,12 @@ export function useDiscussionTools(state: {
             topic: s.analysis.title,
             category: s.category.name,
             question: s.category.discussionQuestion,
-            posts: s.posts
-              .slice(-10)
-              .map((p) => ({
-                id: p.id,
-                content: p.content,
-                author: p.authorName,
-                origin: p.origin,
-              })),
+            posts: s.posts.slice(-10).map((p) => ({
+              id: p.id,
+              content: p.content,
+              author: p.authorName,
+              origin: p.origin,
+            })),
           };
         },
       },

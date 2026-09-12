@@ -8,6 +8,8 @@ export type JobError = { code: string; message: string; canUsePreset: boolean };
 export type AnalysisJob = {
   id: string;
   topicId: string;
+  title: string;
+  sourceUrl: string | null;
   status: 'queued' | 'running' | 'succeeded' | 'failed';
   stage: JobStage;
   resultId: string | null;
@@ -31,6 +33,7 @@ export type HistoryResult = {
   id: string;
   topicId: string;
   title: string;
+  sourceUrl?: string | null;
   sourceMode: 'mock' | 'live' | 'snapshot';
   collectedAt: string;
   lastSeenAt: string;

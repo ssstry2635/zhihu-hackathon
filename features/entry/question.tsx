@@ -8,6 +8,7 @@ import {
   Sparkles,
   LoaderCircle,
   Radio,
+  Search,
 } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
@@ -43,19 +44,27 @@ export default function Question() {
       key={topic.id + ':' + (params.get('job') || '')}
       topic={topic}
       requestedJobId={params.get('job')}
+      initialTitle={params.get('title') || ''}
+      initialUrl={params.get('url') || ''}
     />
   );
 }
 function QuestionContent({
   topic,
   requestedJobId,
+  initialTitle,
+  initialUrl,
 }: {
   topic: Topic;
   requestedJobId: string | null;
+  initialTitle: string;
+  initialUrl: string;
 }) {
   const demoAnalysis = topic.preset;
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [configError, setConfigError] = useState(false);
+  const [customTitle, setCustomTitle] = useState(initialTitle);
+  const [customUrl, setCustomUrl] = useState(initialUrl);
   const entry = useEntryJob(topic.id, requestedJobId);
   const busy = entry.submitting;
   const active =
@@ -74,13 +83,74 @@ function QuestionContent({
   useEffect(() => {
     void loadConfig();
   }, []);
+  function submitCustom(event: { preventDefault(): void }) {
+    event.preventDefault();
+    void entry.startCustom(customTitle, customUrl || undefined);
+  }
   return (
     <AppShell page="question" topicId={topic.id} analysisId={demoAnalysis.id}>
       <main className="container">
         <div className="eyebrow">
           问题现场 <span>/</span> {topic.section}{' '}
-          <span className="mini-label">模拟知乎问题页</span>
+          <span className="mini-label">真实入口 + 预置演示</span>
         </div>
+        <section
+          className="custom-topic-entry"
+          aria-labelledby="custom-topic-title"
+        >
+          <div className="custom-topic-copy">
+            <span className="custom-topic-icon" aria-hidden="true">
+              <Search size={22} />
+            </span>
+            <div>
+              <h1 id="custom-topic-title">整理任意知乎问题</h1>
+              <p>
+                粘贴问题标题即可真实检索；问题链接用于返回原文，不会被当作完整抓取结果。
+              </p>
+            </div>
+          </div>
+          <form onSubmit={submitCustom}>
+            <label>
+              <span>知乎问题标题</span>
+              <input
+                value={customTitle}
+                onChange={(event) => setCustomTitle(event.target.value)}
+                minLength={5}
+                maxLength={200}
+                required
+                placeholder="例如：普通人现在还有必要学习 AI 编程吗？"
+              />
+            </label>
+            <label>
+              <span>原问题链接（可选）</span>
+              <input
+                value={customUrl}
+                onChange={(event) => setCustomUrl(event.target.value)}
+                type="url"
+                placeholder="https://www.zhihu.com/question/…"
+              />
+            </label>
+            <Button
+              type="submit"
+              className="button primary"
+              disabled={
+                busy ||
+                entry.restoring ||
+                active ||
+                !config?.liveAvailable ||
+                customTitle.trim().length < 5
+              }
+            >
+              {busy ? <LoaderCircle className="spin" /> : <Search size={17} />}
+              整理这个问题
+            </Button>
+          </form>
+          <p className="custom-topic-limit">
+            最多 {config?.searchRounds ?? 4} 轮检索、每轮 10
+            条，按内容去重后保留至多 {config?.searchTarget ?? 30}{' '}
+            条主来源及其精选评论；页面会明确展示样本范围与来源。
+          </p>
+        </section>
         <nav className="topic-picker" aria-label="选择议题">
           {topics.map((t) => (
             <Link
@@ -180,6 +250,7 @@ function QuestionContent({
                         ? '本次采集未完成'
                         : jobStageLabels[entry.job.stage]}
                     </b>
+                    <span>{entry.job.title}</span>
                   </output>
                   <ol className="entry-steps" aria-label="分析步骤">
                     {(['collecting', 'classifying', 'saving'] as const).map(
@@ -230,7 +301,7 @@ function QuestionContent({
                 </Button>
               )}
               <div className="small-note">
-                当前展示团队预置的模拟样本。
+                下方当前展示团队预置的模拟样本。
                 <br />
                 进入后可实际发帖、回复和补充材料。
               </div>

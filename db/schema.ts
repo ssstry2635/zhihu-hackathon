@@ -83,6 +83,8 @@ export const analysisJobs = sqliteTable(
   {
     id: text('id').primaryKey(),
     topicId: text('topic_id').notNull().default('ai-coding'),
+    queryTitle: text('query_title'),
+    sourceUrl: text('source_url'),
     visitorId: text('visitor_id').notNull(),
     fingerprint: text('fingerprint').notNull(),
     status: text('status').notNull(),

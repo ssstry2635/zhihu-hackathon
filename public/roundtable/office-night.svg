@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1536 1024" role="img" aria-labelledby="title desc">
+  <title id="title">夜间研究室</title>
+  <desc id="desc">可见城市与山影的夜间蓝色研究室，中央区域保持开放。</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#17365f"/><stop offset=".62" stop-color="#386a9d"/><stop offset="1" stop-color="#7ea5c9"/></linearGradient>
+    <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#8eb2d3"/><stop offset="1" stop-color="#294e78"/></linearGradient>
+    <radialGradient id="lamp"><stop stop-color="#fff9d8"/><stop offset="1" stop-color="#ffe5a3" stop-opacity="0"/></radialGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%"><feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#0c294c" flood-opacity=".35"/></filter>
+    <filter id="blur"><feGaussianBlur stdDeviation="18"/></filter>
+  </defs>
+  <rect width="1536" height="1024" fill="#254d79"/>
+  <rect x="93" y="58" width="1350" height="600" rx="65" fill="#e5f0f8" filter="url(#shadow)"/>
+  <rect x="137" y="100" width="1262" height="493" rx="42" fill="url(#sky)"/>
+  <g fill="#f4e6ab"><circle cx="321" cy="197" r="5"/><circle cx="574" cy="151" r="7"/><circle cx="958" cy="192" r="4"/><circle cx="1180" cy="142" r="6"/><circle cx="1290" cy="241" r="4"/></g>
+  <path d="M137 451 330 295l155 118 197-175 171 176 211-139 335 201v117H137Z" fill="#264d74"/>
+  <path d="M137 508c167-76 276-48 415 5 133 51 241 31 369-13 151-52 288-47 478 11v82H137Z" fill="#173957" opacity=".86"/>
+  <g fill="#9ec7e8"><rect x="254" y="467" width="38" height="126" rx="6"/><rect x="306" y="438" width="52" height="155" rx="6"/><rect x="374" y="491" width="33" height="102" rx="6"/><rect x="1124" y="463" width="46" height="130" rx="6"/><rect x="1185" y="417" width="55" height="176" rx="6"/><rect x="1253" y="479" width="34" height="114" rx="6"/></g>
+  <g fill="#fff1ad"><rect x="267" y="491" width="7" height="7" rx="2"/><rect x="324" y="468" width="8" height="8" rx="2"/><rect x="1205" y="450" width="8" height="8" rx="2"/><rect x="1267" y="503" width="7" height="7" rx="2"/></g>
+  <g fill="none" stroke="#eff7fc" stroke-width="17"><path d="M452 100v493M768 100v493M1084 100v493"/></g>
+  <path d="M0 655 1536 623v401H0Z" fill="url(#floor)"/>
+  <ellipse cx="768" cy="899" rx="468" ry="83" fill="#0e2c4d" opacity=".28" filter="url(#blur)"/>
+  <g filter="url(#shadow)">
+    <rect x="35" y="316" width="244" height="355" rx="36" fill="#dcebf6"/>
+    <g fill="#517ba4"><rect x="65" y="355" width="184" height="24" rx="12"/><rect x="65" y="401" width="184" height="24" rx="12"/><rect x="65" y="447" width="184" height="24" rx="12"/><rect x="65" y="493" width="184" height="24" rx="12"/><rect x="65" y="539" width="184" height="24" rx="12"/></g>
+    <g fill="#f2c977"><rect x="76" y="329" width="31" height="26" rx="6"/><rect x="126" y="375" width="45" height="26" rx="6"/><rect x="190" y="421" width="34" height="26" rx="6"/><rect x="87" y="467" width="48" height="26" rx="6"/><rect x="177" y="513" width="41" height="26" rx="6"/></g>
+    <rect x="1270" y="336" width="231" height="325" rx="38" fill="#dcebf6"/>
+    <rect x="1304" y="378" width="163" height="183" rx="24" fill="#f7fbff"/>
+    <g fill="#81a9cd"><rect x="1331" y="409" width="109" height="17" rx="8"/><rect x="1331" y="449" width="78" height="17" rx="8"/><rect x="1331" y="489" width="96" height="17" rx="8"/></g>
+  </g>
+  <g><ellipse cx="326" cy="742" rx="160" ry="160" fill="url(#lamp)" opacity=".56"/><rect x="310" y="661" width="32" height="135" rx="16" fill="#f5e6b5"/><path d="m257 669 69-97 69 97Z" fill="#fff4c9"/><ellipse cx="1212" cy="756" rx="170" ry="170" fill="url(#lamp)" opacity=".5"/><rect x="1196" y="670" width="32" height="138" rx="16" fill="#f5e6b5"/><path d="m1143 679 69-97 69 97Z" fill="#fff4c9"/></g>
+</svg>

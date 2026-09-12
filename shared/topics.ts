@@ -317,8 +317,12 @@ export function makePresetRound(
     id,
     analysisId: analysis.id,
     visitorId,
+    status: 'ready',
     generationMode: 'scripted',
+    model: null,
+    promptVersion: 'roundtable-script-v2',
     followupUsed: false,
+    createdAt: new Date().toISOString(),
     roles: [
       {
         id: 'host',
@@ -326,6 +330,7 @@ export function makePresetRound(
         categoryId: null,
         description: '梳理议题与证据',
         color: 'host',
+        sourceIds: analysis.sources.map((source) => source.id),
       },
       ...stances.map((c, i) => ({
         id: 'view-' + i,
@@ -333,11 +338,13 @@ export function makePresetRound(
         categoryId: c.id,
         description: c.description,
         color: ['blue', 'green', 'amber'][i],
+        sourceIds: c.sourceIds,
       })),
     ],
     messages: [
       {
         id: 'm1',
+        roundtableId: id,
         speakerRoleId: 'host',
         phase: 'opening',
         content:
@@ -345,24 +352,30 @@ export function makePresetRound(
           analysis.title +
           '”。以下是团队预置脚本，请关注各个主张的适用条件。',
         evidenceRefs: [],
+        order: 0,
       },
       ...stances.map((c, i) => ({
         id: 'm' + (i + 2),
+        roundtableId: id,
         speakerRoleId: 'view-' + i,
         phase: 'statement' as const,
         content: c.description,
         evidenceRefs: c.evidenceRefs,
+        order: i + 1,
       })),
       ...scenario.exchange.map((content, i) => ({
         id: 'm' + (i + 5),
+        roundtableId: id,
         speakerRoleId: 'view-' + i,
         phase: 'exchange' as const,
         replyToMessageId: ['m4', 'm5', 'm6'][i],
         content,
         evidenceRefs: stances[i].evidenceRefs,
+        order: stances.length + i + 1,
       })),
       {
         id: 'm8',
+        roundtableId: id,
         speakerRoleId: 'host',
         phase: 'summary',
         content:
@@ -370,14 +383,17 @@ export function makePresetRound(
           scenario.disagreement +
           '欢迎在对应讨论区补充自己的经历和条件。',
         evidenceRefs: analysis.commonGround[0].evidenceRefs,
+        order: stances.length + scenario.exchange.length + 1,
       },
     ],
     commonGround: analysis.commonGround,
     disagreements: analysis.disagreements,
     gaps: dimensions.slice(0, 2).map((c, i) => ({
       id: id + '~' + i,
+      roundtableId: id,
       question: c.discussionQuestion,
       categoryId: c.id,
+      contextEvidenceRefs: c.evidenceRefs,
       supplementCount: 0,
     })),
   };

@@ -79,6 +79,8 @@ export default function Discussion() {
   useEffect(() => {
     if (!a || !category) return;
     let active = true;
+    // Reset route-scoped form and feed state before loading the next room.
+    // oxlint-disable-next-line react/react-compiler
     setLoaded(false);
     setItems([]);
     setError('');
@@ -451,9 +453,7 @@ export default function Discussion() {
                     </p>
                   )}
                   {notice && (
-                    <p className="inline-success" role="status">
-                      {notice}
-                    </p>
+                    <output className="inline-success">{notice}</output>
                   )}
                 </div>
               </section>

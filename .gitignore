@@ -43,3 +43,4 @@ next-env.d.ts
 
 # Empty template only; actual .env files remain ignored
 !.env.example
+/tmp

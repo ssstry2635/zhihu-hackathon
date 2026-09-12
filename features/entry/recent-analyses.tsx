@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import Link from '@/components/page-link';
 import { Button } from '@/components/ui/button';
 import { api, ensureVisitor } from '@/lib/api';
-import { findTopic } from '@/shared/topics';
 import type { AnalysisHistory } from '@/shared/jobs';
 import { jobStageLabels } from '@/shared/jobs';
 export function RecentAnalyses() {
@@ -92,7 +91,7 @@ export function RecentAnalyses() {
             {pending.map((job) => (
               <li key={job.id}>
                 <div>
-                  <b>{findTopic(job.topicId)?.title ?? '历史议题'}</b>
+                  <b>{job.title}</b>
                   <p className="subtle">
                     {job.status === 'failed'
                       ? (job.error?.message ?? '任务未完成')
@@ -103,7 +102,9 @@ export function RecentAnalyses() {
                   className="history-action"
                   href={
                     '/?topic=' +
-                    encodeURIComponent(job.topicId) +
+                    encodeURIComponent(
+                      job.topicId === 'custom' ? 'ai-coding' : job.topicId,
+                    ) +
                     '&job=' +
                     encodeURIComponent(job.id)
                   }

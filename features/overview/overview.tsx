@@ -10,6 +10,7 @@ import {
   Split,
   Quote,
   Sparkles,
+  ExternalLink,
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AppShell } from '@/components/app-shell';
@@ -49,6 +50,16 @@ export default function Overview() {
                 </div>
                 <h1>{a.title}</h1>
                 <p className="muted">找到你关心的角度，听听不同的人怎么说。</p>
+                {a.sourceUrl && (
+                  <a
+                    className="source-question-link"
+                    href={a.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    在知乎打开原问题 <ExternalLink size={14} />
+                  </a>
+                )}
               </div>
               <div className="sample-count">
                 <b>{a.sampleCount}</b>

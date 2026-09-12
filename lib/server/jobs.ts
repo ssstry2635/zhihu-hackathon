@@ -4,9 +4,9 @@ import { findTopic } from '@/shared/topics';
 import { recordResult } from './history';
 import { assert, errorInfo } from './http';
 import { buildLiveAnalysis } from './analysis';
-import { getZhihuConfig, assertLiveReady, SKILL_VERSION } from './zhihu';
+import { getZhihuConfig, getSearchPlan, assertLiveReady, SKILL_VERSION } from './zhihu';
 // Coordinate this version with B when normalization/classification contracts change.
-const DATA_VERSION = 'analysis-v2-budgeted';
+const DATA_VERSION = 'analysis-v3-multisearch';
 const RUN_TIMEOUT_MS = 120_000;
 const QUEUED_TIMEOUT_MS = 600_000;
 const CACHE_MS = 3_600_000;
@@ -14,6 +14,8 @@ type Row = {
   id: string;
   visitor_id: string;
   topic_id: string;
+  query_title: string | null;
+  source_url: string | null;
   fingerprint: string;
   status: AnalysisJob['status'];
   stage: JobStage;
@@ -29,6 +31,9 @@ function publicJob(row: Row): AnalysisJob {
   return {
     id: row.id,
     topicId: row.topic_id,
+    title:
+      row.query_title ?? findTopic(row.topic_id)?.title ?? '未命名知乎议题',
+    sourceUrl: row.source_url,
     status: row.status,
     stage: row.stage,
     resultId: row.result_id,
@@ -37,6 +42,30 @@ function publicJob(row: Row): AnalysisJob {
     updatedAt: row.updated_at,
     expiresAt: row.expires_at,
   };
+}
+export type CustomAnalysisTarget = { title: string; sourceUrl?: string | null };
+function normalizeTitle(value: string) {
+  const title = value.replace(/\s+/g, ' ').trim();
+  assert(title.length >= 5, 'INVALID_TITLE', '请输入至少 5 个字的问题标题。');
+  assert(title.length <= 200, 'INVALID_TITLE', '问题标题不能超过 200 个字。');
+  return title;
+}
+function normalizeSourceUrl(value?: string | null) {
+  if (!value?.trim()) return null;
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    assert(false, 'INVALID_SOURCE_URL', '请输入有效的知乎问题链接。');
+  }
+  assert(
+    url!.protocol === 'https:' &&
+      ['www.zhihu.com', 'zhihu.com'].includes(url!.hostname) &&
+      /^\/question\/\d+\/?$/.test(url!.pathname),
+    'INVALID_SOURCE_URL',
+    '链接必须是 https://www.zhihu.com/question/… 格式的知乎问题页。',
+  );
+  return `https://www.zhihu.com${url!.pathname.replace(/\/$/, '')}`;
 }
 async function expireJobs() {
   const now = iso();
@@ -75,13 +104,27 @@ export async function startAnalysis(
   requestId: string,
   visitorId: string,
   topicId = 'ai-coding',
+  customTarget?: CustomAnalysisTarget,
 ): Promise<AnalysisStart> {
   const topic = findTopic(topicId);
-  assert(topic, 'NOT_FOUND', '这个议题尚未开放，请选择列表中的议题。', 404);
+  assert(
+    topic || customTarget,
+    'NOT_FOUND',
+    '这个议题尚未开放，请选择列表中的议题。',
+    404,
+  );
   if (mode === 'mock') {
+    assert(topic, 'DEMO_TOPIC_ONLY', '预置演示只支持列表中的议题。');
     await recordResult(visitorId, topic.preset.id);
     return { resultId: topic.preset.id, cached: true };
   }
+  const title = customTarget
+    ? normalizeTitle(customTarget.title)
+    : topic!.title;
+  const sourceUrl = customTarget
+    ? normalizeSourceUrl(customTarget.sourceUrl)
+    : null;
+  const resolvedTopicId = customTarget ? 'custom' : topic!.id;
   assert(
     /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(requestId),
     'INVALID_REQUEST_ID',
@@ -94,7 +137,10 @@ export async function startAnalysis(
     .first<Row>();
   if (previous) {
     assert(
-      previous.topic_id === topicId,
+      previous.topic_id === resolvedTopicId &&
+        (previous.query_title ?? findTopic(previous.topic_id)?.title) ===
+          title &&
+        previous.source_url === sourceUrl,
       'REQUEST_CONFLICT',
       '同一请求标识不能用于不同议题。',
       409,
@@ -102,10 +148,12 @@ export async function startAnalysis(
     return { jobId: previous.id, job: publicJob(previous) };
   }
   assertLiveReady();
+  const searchPlan = getSearchPlan();
   const fingerprint = JSON.stringify([
-    topic.id,
-    topic.title,
-    'related-search:10',
+    resolvedTopicId,
+    title,
+    sourceUrl,
+    `related-search:multi-${searchPlan.rounds}x10-${searchPlan.target}`,
     SKILL_VERSION,
     DATA_VERSION,
     getZhihuConfig().model,
@@ -139,12 +187,14 @@ export async function startAnalysis(
   const now = iso();
   await db()
     .prepare(
-      "INSERT OR IGNORE INTO analysis_jobs (id,visitor_id,topic_id,fingerprint,status,stage,active_key,created_at,updated_at,expires_at) VALUES (?,?,?,?,'queued','queued',?,?,?,?)",
+      "INSERT OR IGNORE INTO analysis_jobs (id,visitor_id,topic_id,query_title,source_url,fingerprint,status,stage,active_key,created_at,updated_at,expires_at) VALUES (?,?,?,?,?,?,'queued','queued',?,?,?,?)",
     )
     .bind(
       requestId,
       visitorId,
-      topicId,
+      resolvedTopicId,
+      title,
+      sourceUrl,
       fingerprint,
       activeKey,
       now,
@@ -205,13 +255,12 @@ export async function runAnalysisJob(
     };
     // Await execution inside POST. No durable queue is bound to this Worker;
     // unawaited promises or waitUntil cannot guarantee completion after disconnect.
-    const topic = findTopic(job.topicId);
-    assert(topic, 'NOT_FOUND', '这个议题尚未开放。', 404);
     const analysis = await buildLiveAnalysis(
-      topic.title,
+      job.title,
       onStage,
-      topic.id,
+      job.topicId,
       visitorId,
+      job.sourceUrl,
     );
     const finishedAt = iso();
     await db().batch([

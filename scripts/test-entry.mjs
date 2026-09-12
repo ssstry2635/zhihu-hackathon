@@ -67,6 +67,7 @@ const context = vm.createContext({
   TextEncoder,
   Uint8Array,
   crypto,
+  structuredClone,
   fetch: (...args) => {
     requestCount++;
     return upstream(...args);
@@ -157,7 +158,7 @@ function success(url, init) {
     Math.abs(Number(init.headers['X-Request-Timestamp']) - Date.now() / 1000) <
       5,
   );
-  assert.equal(init.redirect, 'error');
+  assert.equal(init.redirect, 'manual');
   if (init.method === 'GET') {
     assert.equal(new URL(url).searchParams.get('Count'), '10');
     return Response.json(searchFixture);
@@ -240,8 +241,10 @@ await check(
     });
     unblock();
     const done = await run;
-    assert.equal(done.status, 'succeeded');
-    assert.equal(requestCount, 2);
+    assert.equal(done.status, 'succeeded', JSON.stringify(done.error));
+    // 3 search rounds (fixture repeats one item; early stop after two empty
+    // rounds) plus 1 classification call.
+    assert.equal(requestCount, 4);
     assert.equal(
       (await jobs.runAnalysisJob(a.jobId, 'a')).resultId,
       done.resultId,
@@ -249,7 +252,7 @@ await check(
     assert.equal((await jobs.startAnalysis('live', id, 'a')).jobId, a.jobId);
     const cached = await jobs.startAnalysis('live', crypto.randomUUID(), 'b');
     assert.equal(cached.resultId, done.resultId);
-    assert.equal(requestCount, 2);
+    assert.equal(requestCount, 4);
     assert(
       sql.prepare('SELECT payload FROM analyses WHERE id=?').get(done.resultId),
     );
@@ -416,6 +419,47 @@ await check(
       (await call('/topics/ai-coding/analyses', 'POST', { mode: 'mock' }))
         .resultId,
       'demo-v1',
+    );
+    const customTitle = '自由输入的知乎问题是否可以被真实整理？';
+    const custom = await call(
+      '/analyses',
+      'POST',
+      {
+        mode: 'live',
+        requestId: crypto.randomUUID(),
+        title: customTitle,
+        sourceUrl: 'https://zhihu.com/question/123456/',
+      },
+      202,
+    );
+    assert.equal(custom.job.topicId, 'custom');
+    assert.equal(custom.job.title, customTitle);
+    assert.equal(custom.job.sourceUrl, 'https://www.zhihu.com/question/123456');
+    const customDone = await call('/jobs/' + custom.jobId + '/run', 'POST', {});
+    const customAnalysis = await call('/analyses/' + customDone.resultId);
+    assert.equal(customAnalysis.title, customTitle);
+    assert.equal(customAnalysis.topicId, 'custom');
+    assert.equal(customAnalysis.sourceUrl, custom.job.sourceUrl);
+    await call(
+      '/analyses',
+      'POST',
+      {
+        mode: 'live',
+        requestId: crypto.randomUUID(),
+        title: '太短',
+      },
+      400,
+    );
+    await call(
+      '/analyses',
+      'POST',
+      {
+        mode: 'live',
+        requestId: crypto.randomUUID(),
+        title: customTitle,
+        sourceUrl: 'https://example.com/question/123',
+      },
+      400,
     );
     await call(
       '/topics/ai-coding/analyses/extra',
@@ -732,19 +776,209 @@ await check(
     sql
       .prepare('INSERT INTO analyses(id,payload,created_at) VALUES (?,?,?)')
       .run(real.id, JSON.stringify(real), real.collectedAt);
+    const presetRound = topics.makePresetRound(real, 'template', '');
+    const rosterOutput = {
+      roles: presetRound.roles.map(({ id, name, categoryId, description }) => ({
+        id,
+        name,
+        categoryId,
+        description,
+      })),
+      opening: { content: presetRound.messages[0].content },
+    };
     upstream = () =>
       Response.json({
         choices: [
           {
             message: {
-              content: JSON.stringify(
-                topics.makePresetRound(real, 'template', ''),
-              ),
+              content: JSON.stringify(rosterOutput),
             },
           },
         ],
       });
     const round = await rounds.startRound(real.id, 'round-owner');
+    assert.equal(round.generationMode, 'live');
+    assert.equal(round.status, 'ready');
+    assert.equal(round.promptVersion, rounds.ROUND_PROMPT_VERSION);
+    assert.equal(round.model, zhihu.getZhihuConfig().model);
+    assert.equal(round.scheduler.mode, 'autonomous');
+    assert.equal(round.scheduler.state, 'running');
+    assert.equal(round.messages.length, 1);
+    assert(round.createdAt);
+    assert(
+      round.messages.every(
+        (message, order) =>
+          message.roundtableId === round.id && message.order === order,
+      ),
+    );
+    assert(round.gaps.every((gap) => gap.roundtableId === round.id));
+    const guestRoleIds = ['counter', 'evidence', 'context'];
+    const speaker = round.roles.find(
+      (role) => role.id !== 'host' && !guestRoleIds.includes(role.id),
+    );
+    const speakerCategory = real.categories.find(
+      (category) => category.id === speaker.categoryId,
+    );
+    const turnEvidence = (role) =>
+      real.sources
+        .filter((source) => role.sourceIds.includes(source.id))
+        .slice(0, 1)
+        .map((source) => ({ sourceId: source.id }));
+    upstream = () =>
+      Response.json({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                turns: round.roles
+                  .filter(
+                    (role) =>
+                      role.id !== 'host' && !guestRoleIds.includes(role.id),
+                  )
+                  .map((role) => ({
+                    speakerRoleId: role.id,
+                    content: '我的开场陈述。',
+                    evidenceRefs: turnEvidence(role),
+                  })),
+              }),
+            },
+          },
+        ],
+      });
+    let advanced = await rounds.advanceRound(round.id, 'round-owner');
+    // One batched call generates every statement.
+    assert.equal(advanced.messages.length, 4);
+    assert.equal(advanced.messages[1].speakerRoleId, speaker.id);
+    assert.equal(
+      advanced.scheduler.lastSelectedRoleId,
+      advanced.messages.at(-1).speakerRoleId,
+    );
+    while (advanced.scheduler.state === 'running') {
+      const viewpointRoles = advanced.roles.filter(
+        (role) => role.id !== 'host' && !guestRoleIds.includes(role.id),
+      );
+      const stated = new Set(
+        advanced.messages
+          .filter((message) => message.phase === 'statement')
+          .map((message) => message.speakerRoleId),
+      );
+      const missing = viewpointRoles.filter((role) => !stated.has(role.id));
+      const guestIds = ['counter', 'evidence', 'context'];
+      const exchangeCount = advanced.messages.filter(
+        (message) =>
+          message.phase === 'exchange' &&
+          !guestIds.includes(message.speakerRoleId),
+      ).length;
+      if (
+        !missing.length &&
+        exchangeCount >= Math.max(8, viewpointRoles.length * 2)
+      ) {
+        upstream = () =>
+          Response.json({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    content: '主持人总结了共识、分歧与仍缺少的证据。',
+                    evidenceRefs: real.categories[0].evidenceRefs.slice(0, 1),
+                    commonGround: [],
+                    disagreements: [],
+                  }),
+                },
+              },
+            ],
+          });
+      } else if (missing.length) {
+        upstream = () =>
+          Response.json({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    turns: missing.map((role) => ({
+                      speakerRoleId: role.id,
+                      content: '补齐我的开场陈述。',
+                      evidenceRefs: turnEvidence(role),
+                    })),
+                  }),
+                },
+              },
+            ],
+          });
+      } else if (
+        exchangeCount >= 2 &&
+        exchangeCount % 2 === 0 &&
+        exchangeCount < 10 &&
+        !guestIds.includes(advanced.messages.at(-1).speakerRoleId)
+      ) {
+        const spoken = new Set(
+          advanced.messages
+            .filter((message) => guestIds.includes(message.speakerRoleId))
+            .map((message) => message.speakerRoleId),
+        );
+        const guest = guestIds.find((id) => !spoken.has(id));
+        upstream = () =>
+          Response.json({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    content: '嘉宾插话：我补充一个关键追问。',
+                    evidenceRefs: [
+                      { sourceId: real.sources[0].id },
+                    ],
+                  }),
+                },
+              },
+            ],
+          });
+        void guest;
+      } else {
+        let candidates = viewpointRoles;
+        const previousSpeaker = advanced.messages.at(-1).speakerRoleId;
+        if (candidates.length > 1)
+          candidates = candidates.filter((role) => role.id !== previousSpeaker);
+        const pair = candidates.slice(0, 2);
+        const replyTarget = advanced.messages.find(
+          (message) => message.speakerRoleId !== pair[0].id,
+        );
+        upstream = () =>
+          Response.json({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    turns: pair.map((role, index) => ({
+                      speakerRoleId: role.id,
+                      content: '我依据自己的材料回应这一点。',
+                      replyToMessageId:
+                        index === 0 ? replyTarget.id : 'first-turn',
+                      evidenceRefs: real.sources
+                        .filter((source) => role.sourceIds.includes(source.id))
+                        .slice(0, 1)
+                        .map((source) => ({ sourceId: source.id })),
+                    })),
+                  }),
+                },
+              },
+            ],
+          });
+      }
+      advanced = await rounds.advanceRound(round.id, 'round-owner');
+    }
+    assert.equal(advanced.scheduler.state, 'complete');
+    // opening + 3 statements + 8 exchanges + 3 guest interjections + summary
+    assert.equal(advanced.messages.length, 16);
+    assert.equal(advanced.messages.at(-1).phase, 'summary');
+    upstream = () =>
+      Response.json({
+        choices: [{ message: { content: JSON.stringify(rosterOutput) } }],
+      });
+    const cachedRound = await rounds.startRound(real.id, 'round-cache-owner');
+    assert.equal(cachedRound.generationMode, 'live');
+    assert.equal(cachedRound.scheduler.mode, 'autonomous');
+    assert.equal(cachedRound.status, 'ready');
+    assert.equal(cachedRound.promptVersion, rounds.ROUND_PROMPT_VERSION);
     upstream = () =>
       Response.json({
         choices: [
@@ -763,7 +997,7 @@ await check(
       sql
         .prepare('SELECT COUNT(*) AS n FROM upstream_calls WHERE visitor_id=?')
         .get('round-owner').n,
-      2,
+      11,
     );
   },
 );

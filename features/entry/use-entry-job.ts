@@ -45,11 +45,6 @@ export function useEntryJob(
   const receive = useCallback(
     (next: AnalysisJob) => {
       if (activeId.current !== next.id) return;
-      if (next.topicId !== topicId) {
-        setNotice('该任务属于另一个议题，请从最近分析进入。');
-        setLookupFailed(true);
-        return;
-      }
       setJob((previous) =>
         previous &&
         previous.id === next.id &&
@@ -62,7 +57,7 @@ export function useEntryJob(
       if (next.status === 'succeeded' && next.resultId && autoOpen.current)
         openResult(next.resultId);
     },
-    [openResult, topicId],
+    [openResult],
   );
   const watch = useCallback(
     (id: string) => {
@@ -152,7 +147,10 @@ export function useEntryJob(
       await refresh(id);
     }
   }
-  async function startLive() {
+  async function startLiveTarget(target?: {
+    title: string;
+    sourceUrl?: string;
+  }) {
     if (
       gate.current ||
       restoring ||
@@ -175,8 +173,12 @@ export function useEntryJob(
       const requestId = crypto.randomUUID();
       saveStored(storageKey, requestId);
       const result = await post<AnalysisStart>(
-        '/topics/' + encodeURIComponent(topicId) + '/analyses',
-        { mode: 'live', requestId },
+        target
+          ? '/analyses'
+          : '/topics/' + encodeURIComponent(topicId) + '/analyses',
+        target
+          ? { mode: 'live', requestId, ...target }
+          : { mode: 'live', requestId },
         { signal: AbortSignal.timeout(15000) },
       );
       if ('resultId' in result) {
@@ -235,7 +237,9 @@ export function useEntryJob(
     restoring,
     notice,
     lookupFailed,
-    startLive,
+    startLive: () => startLiveTarget(),
+    startCustom: (title: string, sourceUrl?: string) =>
+      startLiveTarget({ title, sourceUrl }),
     openPreset,
     openResult,
     refresh: () => {

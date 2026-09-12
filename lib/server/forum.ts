@@ -193,7 +193,8 @@ export async function createPost(
   }
   const type = input.contributionType || 'opinion';
   assert(
-    ['opinion', 'experience', 'condition', 'evidence'].includes(String(type)),
+    typeof type === 'string' &&
+      ['opinion', 'experience', 'condition', 'evidence'].includes(type),
     'INVALID_TYPE',
     '请选择有效的发言类型。',
   );

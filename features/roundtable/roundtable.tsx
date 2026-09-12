@@ -1,10 +1,11 @@
 'use client';
 import Link from '@/components/page-link';
 import { useEffect, useState } from 'react';
+import { RoomStage } from './room-stage';
+import { WeChatChat } from './wechat-chat';
 import {
   Play,
   Pause,
-  ArrowRight,
   ArrowUpRight,
   MessagesSquare,
   Bookmark,
@@ -13,12 +14,11 @@ import {
   RefreshCw,
   Check,
   Split,
-  MessageCircle,
 } from 'lucide-react';
 import { AppShell, BackLink } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Loading, ErrorState } from '@/components/states';
-import { EvidenceLinks } from '@/components/source-dialog';
+import { SourceDialog } from '@/components/source-dialog';
 import { useAnalysis } from '@/features/use-analysis';
 import { api, post } from '@/lib/api';
 import type { Roundtable as Round } from '@/shared/types';
@@ -28,83 +28,357 @@ const phases = {
   exchange: '观点交锋',
   summary: '主持人总结',
   followup: '继续追问',
+  user: '访客发言',
 };
+const scenes = [
+  {
+    id: 'morning',
+    name: '晨光共创室',
+    caption: '把议题与主张先摆上桌面',
+  },
+  {
+    id: 'strategy',
+    name: '蓝图作战室',
+    caption: '追问理由，观察观点如何交锋',
+  },
+  {
+    id: 'night',
+    name: '夜间研究室',
+    caption: '整理共识、分歧和待解问题',
+  },
+] as const;
+const sceneForPhase = {
+  opening: 'morning',
+  statement: 'morning',
+  exchange: 'strategy',
+  summary: 'night',
+  followup: 'night',
+  user: 'strategy',
+} as const;
 export default function Roundtable() {
   const { id, analysis: a, error: analysisError } = useAnalysis();
-  const [round, setRound] = useState<Round | null>(null);
-  const [error, setError] = useState('');
+  const [roundResult, setRoundResult] = useState<Round | null>(null);
+  const [errorResult, setErrorResult] = useState<{
+    analysisId: string;
+    message: string;
+  } | null>(null);
   const [visible, setVisible] = useState(1);
   const [playing, setPlaying] = useState(false);
   const [question, setQuestion] = useState('');
   const [busy, setBusy] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatError, setChatError] = useState('');
+  const [manualScene, setManualScene] = useState<string | null>(null);
+  const round = roundResult?.analysisId === id ? roundResult : null;
+  const error = errorResult?.analysisId === id ? errorResult.message : '';
+  function setCurrentError(message: string) {
+    setErrorResult(message ? { analysisId: id, message } : null);
+  }
   useEffect(() => {
     if (!a) return;
     let active = true;
-    setRound(null);
-    setError('');
-    setPlaying(false);
     post<Round>('/analyses/' + encodeURIComponent(id) + '/roundtables', {})
       .then((r) => {
         if (active) {
-          setRound(r);
-          setVisible(r.followupUsed ? r.messages.length : 1);
+          setRoundResult(r);
+          setVisible(
+            r.scheduler?.mode === 'autonomous' || r.followupUsed
+              ? r.messages.length
+              : 1,
+          );
+          setManualScene(null);
+          setErrorResult(null);
+          setPlaying(
+            r.scheduler?.mode === 'autonomous'
+              ? r.scheduler.state === 'running'
+              : !r.followupUsed,
+          );
         }
       })
       .catch((e) => {
-        if (active) setError(e.message);
+        if (active) setErrorResult({ analysisId: id, message: e.message });
       });
     return () => {
       active = false;
     };
   }, [a, id]);
-  useEffect(() => {
-    if (!round || !playing) return;
-    const timer = setInterval(
-      () =>
-        setVisible((v) => {
-          if (v >= round.messages.length) {
-            setPlaying(false);
-            return v;
-          }
-          return v + 1;
-        }),
-      2600,
-    );
-    return () => clearInterval(timer);
-  }, [playing, round]);
   async function ask() {
     if (!round || busy || !question.trim()) return;
     setBusy(true);
-    setError('');
+    setCurrentError('');
     try {
       const r = await post<Round>('/roundtables/' + round.id + '/followups', {
         question,
       });
-      setRound(r);
+      setRoundResult(r);
       setVisible(r.messages.length);
       setQuestion('');
       setPlaying(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : '追问未完成。');
+      setCurrentError(e instanceof Error ? e.message : '追问未完成。');
       try {
-        setRound(await api<Round>('/roundtables/' + round.id));
+        setRoundResult(await api<Round>('/roundtables/' + round.id));
       } catch {}
     } finally {
       setBusy(false);
     }
   }
+  async function sendUserMessage(content: string) {
+    if (!round || chatBusy) return;
+    setChatBusy(true);
+    setChatError('');
+    try {
+      const r = await post<Round>(
+        '/roundtables/' + encodeURIComponent(round.id) + '/messages',
+        { content },
+      );
+      setRoundResult(r);
+      setVisible(r.messages.length);
+    } catch (e) {
+      setChatError(e instanceof Error ? e.message : '发言未完成。');
+      try {
+        setRoundResult(await api<Round>('/roundtables/' + round.id));
+      } catch {}
+    } finally {
+      setChatBusy(false);
+    }
+  }
   async function refresh() {
     if (!round) return;
     try {
-      setRound(await api<Round>('/roundtables/' + round.id));
-      setError('');
+      setRoundResult(await api<Round>('/roundtables/' + round.id));
+      setCurrentError('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : '刷新失败。');
+      setCurrentError(e instanceof Error ? e.message : '刷新失败。');
+    }
+  }
+  async function advance() {
+    if (
+      !round ||
+      scheduling ||
+      round.scheduler?.mode !== 'autonomous' ||
+      round.scheduler.state !== 'running'
+    )
+      return;
+    setScheduling(true);
+    setCurrentError('');
+    try {
+      const next = await post<Round>(
+        '/roundtables/' + encodeURIComponent(round.id) + '/advance',
+        {},
+      );
+      setRoundResult(next);
+      setVisible(next.messages.length);
+    } catch (e) {
+      setPlaying(false);
+      setCurrentError(
+        e instanceof Error ? e.message : '主持人暂时无法安排下一位 Agent。',
+      );
+    } finally {
+      setScheduling(false);
     }
   }
   const finished = round
-    ? visible >= round.messages.filter((m) => m.phase !== 'followup').length
+    ? round.scheduler?.mode === 'autonomous'
+      ? round.scheduler.state === 'complete'
+      : visible >= round.messages.filter((m) => m.phase !== 'followup').length
     : false;
+  const activeMessage = round
+    ? round.messages[Math.max(0, Math.min(visible, round.messages.length) - 1)]
+    : null;
+  const automaticSceneId = activeMessage
+    ? sceneForPhase[activeMessage.phase]
+    : 'morning';
+  const activeScene =
+    scenes.find((scene) => scene.id === (manualScene ?? automaticSceneId)) ??
+    scenes[0];
+  const heading = round && a ? (
+    <div className="round-heading">
+      <div>
+        <div className="eyebrow">
+          <MessagesSquare size={16} /> Agent 圆桌 <span>/</span>{' '}
+          {round.generationMode === 'scripted'
+            ? '预置演示脚本'
+            : '真实来源 · 自主 Agent 调度'}
+        </div>
+        <h1>不同观点，在这里相遇。</h1>
+        <p className="muted">{a.title}</p>
+      </div>
+      <span className="round-orbit">
+        <MessagesSquare size={42} />
+      </span>
+    </div>
+  ) : null;
+  const stage = round ? (
+    <RoomStage
+      round={round}
+      visible={visible}
+      playing={playing}
+      scene={activeScene.id}
+      onScene={setManualScene}
+      onTurnEnd={() => {
+        if (round.scheduler?.mode === 'autonomous') {
+          if (round.scheduler.state === 'complete') setPlaying(false);
+          else void advance();
+        } else if (visible >= round.messages.length) setPlaying(false);
+        else setVisible((v) => v + 1);
+      }}
+    />
+  ) : null;
+  const liveToolbar = round && (
+    <div className="round-toolbar">
+      <div className="phase-steps">
+        {['opening', 'statement', 'exchange', 'summary'].map((phase, i) => (
+          <span
+            key={phase}
+            className={
+              round.messages
+                .slice(0, visible)
+                .some((m) => m.phase === phase)
+                ? 'reached'
+                : ''
+            }
+          >
+            <b>{i + 1}</b>
+            {phases[phase as keyof typeof phases]}
+          </span>
+        ))}
+      </div>
+      <div className="play-controls">
+        <span className="scheduler-state">
+          {scheduling
+            ? '主持人正在审核发言申请'
+            : finished
+              ? '本场圆桌已完成总结，你仍可继续发言'
+              : playing
+                ? '主持人持续调度 · Agent 自主申请中'
+                : '调度暂时中断，可恢复'}
+        </span>
+        {!playing && !finished && (
+          <Button
+            variant="outline"
+            className="button"
+            disabled={scheduling}
+            onClick={() => setPlaying(true)}
+          >
+            <Play size={15} /> 恢复调度
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+  const toolbar = round && (
+    <div className="round-toolbar">
+      <div className="phase-steps">
+        {['opening', 'statement', 'exchange', 'summary'].map((phase, i) => (
+          <span
+            key={phase}
+            className={
+              round.messages
+                .slice(0, visible)
+                .some((m) => m.phase === phase)
+                ? 'reached'
+                : ''
+            }
+          >
+            <b>{i + 1}</b>
+            {phases[phase as keyof typeof phases]}
+          </span>
+        ))}
+      </div>
+      <div className="play-controls">
+        <span className="scheduler-state">
+          {scheduling
+            ? '主持人正在审核发言申请'
+            : finished
+              ? '本轮自主调度已完成'
+              : playing
+                ? '主持人调度 · Agent 自主申请中'
+                : '主持人调度已暂停'}
+        </span>
+        <Button
+          variant="outline"
+          className="button"
+          disabled={
+            scheduling ||
+            (round.scheduler?.mode === 'autonomous' && finished)
+          }
+          onClick={() => {
+            if (
+              round.scheduler?.mode !== 'autonomous' &&
+              visible >= round.messages.length
+            )
+              setVisible(1);
+            setPlaying(!playing);
+          }}
+        >
+          {playing ? <Pause size={15} /> : <Play size={15} />}{' '}
+          {playing ? '暂停调度' : '继续调度'}
+        </Button>
+      </div>
+    </div>
+  );
+  const errorBanner = error && (
+    <p className="inline-error round-scheduler-error" role="alert">
+      {error}
+    </p>
+  );
+  const summaryBlock = round && finished && (
+    <div className="round-summary">
+      <div>
+        <h3>
+          <Check size={17} />
+          材料中的共同点
+        </h3>
+        {round.commonGround.length ? (
+          round.commonGround.map((f) => <p key={f.id}>{f.text}</p>)
+        ) : (
+          <p>尚未发现足够明确的共同点。</p>
+        )}
+      </div>
+      <div>
+        <h3>
+          <Split size={17} />
+          仍然存在的分歧
+        </h3>
+        {round.disagreements.map((f) => (
+          <p key={f.id}>{f.text}</p>
+        ))}
+      </div>
+    </div>
+  );
+  const gapsBlock = round && (
+    <section className="gap-panel">
+      <div className="section-title">
+        <h3>
+          <Bookmark size={17} />
+          在知乎里问问真人
+        </h3>
+        <Button variant="ghost" aria-label="刷新补充数量" onClick={refresh}>
+          <RefreshCw size={14} />
+        </Button>
+      </div>
+      {round.gaps.map((g) => (
+        <div className="gap-item" key={g.id}>
+          <h4>{g.question}</h4>
+          <Link
+            href={
+              '/discussion/' +
+              encodeURIComponent(g.categoryId) +
+              '?analysis=' +
+              encodeURIComponent(id) +
+              '&gap=' +
+              encodeURIComponent(g.id)
+            }
+          >
+            补充这个问题
+            <ArrowUpRight size={16} />
+          </Link>
+        </div>
+      ))}
+    </section>
+  );
   return (
     <AppShell
       page="roundtable"
@@ -112,7 +386,7 @@ export default function Roundtable() {
       topicId={a?.topicId}
       live={a?.sourceMode === 'live'}
     >
-      <main className="container">
+      <main className="container round-game-page">
         {analysisError ? (
           <ErrorState message={analysisError} />
         ) : !a ? (
@@ -129,67 +403,34 @@ export default function Roundtable() {
               }
             />
           )
+        ) : round.scheduler?.mode === 'autonomous' ? (
+          <div className="round-live-layout">
+            <div className="round-live-stage">
+              <BackLink analysisId={id} />
+              {heading}
+              {stage}
+              {liveToolbar}
+              {errorBanner}
+              {summaryBlock}
+              <div className="round-live-gaps">{gapsBlock}</div>
+            </div>
+            <aside className="round-live-chat" aria-label="圆桌聊天">
+              <WeChatChat
+                round={round}
+                analysis={a}
+                sending={chatBusy}
+                error={chatError}
+                onSend={sendUserMessage}
+              />
+            </aside>
+          </div>
         ) : (
           <>
             <BackLink analysisId={id} />
-            <div className="round-heading">
-              <div>
-                <div className="eyebrow">
-                  <MessagesSquare size={16} /> Agent 圆桌 <span>/</span>{' '}
-                  {round.generationMode === 'scripted'
-                    ? '预置演示脚本'
-                    : '基于当前来源的 AI 讨论'}
-                </div>
-                <h1>不同观点，在这里相遇。</h1>
-                <p className="muted">{a.title}</p>
-              </div>
-              <span className="round-orbit">
-                <MessagesSquare size={42} />
-              </span>
-            </div>
-            <div className="round-toolbar">
-              <div className="phase-steps">
-                {['opening', 'statement', 'exchange', 'summary'].map(
-                  (phase, i) => (
-                    <span
-                      key={phase}
-                      className={
-                        round.messages
-                          .slice(0, visible)
-                          .some((m) => m.phase === phase)
-                          ? 'reached'
-                          : ''
-                      }
-                    >
-                      <b>{i + 1}</b>
-                      {phases[phase as keyof typeof phases]}
-                    </span>
-                  ),
-                )}
-              </div>
-              <div className="play-controls">
-                <Button
-                  variant="outline"
-                  className="button"
-                  onClick={() => {
-                    if (visible >= round.messages.length) setVisible(1);
-                    setPlaying(!playing);
-                  }}
-                >
-                  {playing ? <Pause size={15} /> : <Play size={15} />}{' '}
-                  {playing ? '暂停' : '播放讨论'}
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setVisible(round.messages.length);
-                    setPlaying(false);
-                  }}
-                >
-                  查看完整讨论
-                </Button>
-              </div>
-            </div>
+            {heading}
+            {stage}
+            {toolbar}
+            {errorBanner}
             <div className="page-grid round-grid">
               <section>
                 <div className="transcript" aria-live="polite">
@@ -197,17 +438,25 @@ export default function Roundtable() {
                     const role = round.roles.find(
                       (r) => r.id === m.speakerRoleId,
                     )!;
-                    const parent = m.replyToMessageId
-                      ? round.messages.find((p) => p.id === m.replyToMessageId)
-                      : null;
-                    const parentRole = round.roles.find(
-                      (r) => r.id === parent?.speakerRoleId,
+                    const roleIndex = round.roles.findIndex(
+                      (candidate) => candidate.id === role.id,
                     );
+                    const parent = m.replyToMessageId
+                      ? round.messages.find(
+                          (message) => message.id === m.replyToMessageId,
+                        )
+                      : null;
+                    const parentRole = parent
+                      ? round.roles.find(
+                          (candidate) => candidate.id === parent.speakerRoleId,
+                        )
+                      : null;
                     return (
                       <article
                         className={
                           'round-message ' +
-                          (role.id === 'host' ? 'moderator' : '')
+                          (role.id === 'host' ? 'moderator ' : '') +
+                          (roleIndex % 2 === 1 ? 'from-right' : 'from-left')
                         }
                         key={m.id}
                       >
@@ -221,72 +470,39 @@ export default function Roundtable() {
                         <div className="message-body">
                           <div className="message-author">
                             <b>{role.name}</b>
-                            <span className="ai-label">AI</span>
-                            <span className="subtle">{phases[m.phase]}</span>
                           </div>
-                          {parent && (
-                            <div className="responding">
-                              <MessageCircle size={13} />
-                              回应 {parentRole?.name} ·{' '}
-                              {parent.content.slice(0, 32)}…
-                            </div>
-                          )}
-                          <p>{m.content}</p>
-                          <EvidenceLinks
-                            analysis={a}
-                            evidenceRefs={m.evidenceRefs}
-                          />
+                          <div className="message-bubble">
+                            <p>{m.content}</p>
+                            {parent && (
+                              <blockquote className="message-quote">
+                                <b>{parentRole?.name ?? '上一位 Agent'}：</b>
+                                {parent.content.length > 72
+                                  ? parent.content.slice(0, 72) + '…'
+                                  : parent.content}
+                              </blockquote>
+                            )}
+                            {m.evidenceRefs.length > 0 && (
+                              <SourceDialog
+                                analysis={a}
+                                sourceIds={m.evidenceRefs.map(
+                                  (evidence) => evidence.sourceId,
+                                )}
+                                label={String(m.evidenceRefs.length)}
+                                compact
+                              />
+                            )}
+                          </div>
                         </div>
                       </article>
                     );
                   })}
                 </div>
-                {!finished && (
-                  <div className="continue-discussion">
-                    <span>观点之间的回应，也值得认真听。</span>
-                    <Button
-                      variant="ghost"
-                      onClick={() =>
-                        setVisible((v) =>
-                          Math.min(v + 1, round.messages.length),
-                        )
-                      }
-                    >
-                      下一条发言
-                      <ArrowRight size={15} />
-                    </Button>
-                  </div>
-                )}
                 {finished && (
                   <>
-                    <div className="round-summary">
-                      <div>
-                        <h3>
-                          <Check size={17} />
-                          材料中的共同点
-                        </h3>
-                        {round.commonGround.length ? (
-                          round.commonGround.map((f) => (
-                            <p key={f.id}>{f.text}</p>
-                          ))
-                        ) : (
-                          <p>尚未发现足够明确的共同点。</p>
-                        )}
-                      </div>
-                      <div>
-                        <h3>
-                          <Split size={17} />
-                          仍然存在的分歧
-                        </h3>
-                        {round.disagreements.map((f) => (
-                          <p key={f.id}>{f.text}</p>
-                        ))}
-                      </div>
-                    </div>
+                    {summaryBlock}
                     <section className="followup">
                       <div className="section-title">
                         <h2>还有一个问题，想继续问</h2>
-                        <span className="subtle">本场可追问一次</span>
                       </div>
                       {round.followupUsed ? (
                         <p className="inline-success">
@@ -341,78 +557,13 @@ export default function Roundtable() {
                               {busy ? '正在回应…' : '追问'}
                             </Button>
                           </div>
-                          {round.generationMode === 'scripted' && (
-                            <p className="small-note">
-                              预置模式使用固定回应示范流程，自由追问不会触发实时模型。
-                            </p>
-                          )}
                         </>
-                      )}
-                      {error && (
-                        <p className="inline-error" role="alert">
-                          {error}
-                        </p>
                       )}
                     </section>
                   </>
                 )}
               </section>
-              <aside>
-                <section className="round-roles">
-                  <span className="overline">本轮讨论角色</span>
-                  {round.roles
-                    .filter((r) => r.id !== 'host')
-                    .map((r) => (
-                      <div className="role-row" key={r.id}>
-                        <span className={'role-avatar ' + r.color}>
-                          {r.name.slice(0, 1)}
-                        </span>
-                        <div>
-                          <b>{r.name}</b>
-                          <p>{r.description}</p>
-                        </div>
-                      </div>
-                    ))}
-                  <p className="small-note">
-                    角色代表材料中的观点，不代表原作者本人参与。
-                  </p>
-                </section>
-                <section className="gap-panel">
-                  <div className="section-title">
-                    <h3>
-                      <Bookmark size={17} />
-                      把问题交回给人
-                    </h3>
-                    <Button
-                      variant="ghost"
-                      aria-label="刷新补充数量"
-                      onClick={refresh}
-                    >
-                      <RefreshCw size={14} />
-                    </Button>
-                  </div>
-                  <p>有些答案，需要真实经历来补充。</p>
-                  {round.gaps.map((g) => (
-                    <div className="gap-item" key={g.id}>
-                      <h4>{g.question}</h4>
-                      <span>{g.supplementCount} 条用户补充</span>
-                      <Link
-                        href={
-                          '/discussion/' +
-                          encodeURIComponent(g.categoryId) +
-                          '?analysis=' +
-                          encodeURIComponent(id) +
-                          '&gap=' +
-                          encodeURIComponent(g.id)
-                        }
-                      >
-                        补充这个问题
-                        <ArrowUpRight size={16} />
-                      </Link>
-                    </div>
-                  ))}
-                </section>
-              </aside>
+              <aside>{gapsBlock}</aside>
             </div>
           </>
         )}

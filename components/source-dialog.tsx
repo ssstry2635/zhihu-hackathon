@@ -14,10 +14,12 @@ export function SourceDialog({
   analysis,
   sourceIds,
   label = '查看依据',
+  compact = false,
 }: {
   analysis: Analysis;
   sourceIds: string[];
   label?: string;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const selected = sourceIds
@@ -27,10 +29,12 @@ export function SourceDialog({
     <>
       <Button
         variant="ghost"
-        className="source-link"
+        className={compact ? 'source-link evidence-count' : 'source-link'}
         onClick={() => setOpen(true)}
+        aria-label={compact ? `查看 ${sourceIds.length} 条依据` : undefined}
+        title={compact ? `查看 ${sourceIds.length} 条依据` : undefined}
       >
-        <FileText size={14} />
+        {!compact && <FileText size={14} />}
         {label}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>

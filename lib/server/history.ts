@@ -14,6 +14,7 @@ export async function recentResults(
   const { results } = await getDb()
     .prepare(`SELECT a.id,
     json_extract(a.payload,'$.topicId') AS topicId, json_extract(a.payload,'$.title') AS title,
+    json_extract(a.payload,'$.sourceUrl') AS sourceUrl,
     json_extract(a.payload,'$.sourceMode') AS sourceMode, json_extract(a.payload,'$.collectedAt') AS collectedAt,
     v.seen_at AS lastSeenAt FROM analysis_visits v JOIN analyses a ON a.id=v.analysis_id
     WHERE v.visitor_id=? ORDER BY v.seen_at DESC,a.id DESC LIMIT 20`)

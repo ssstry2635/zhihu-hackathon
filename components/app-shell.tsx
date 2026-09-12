@@ -14,7 +14,9 @@ export function AppShell({
   live?: boolean;
 }) {
   const q = '?analysis=' + encodeURIComponent(analysisId),
-    entry = '/?topic=' + encodeURIComponent(topicId);
+    entry =
+      '/?topic=' +
+      encodeURIComponent(topicId === 'custom' ? 'ai-coding' : topicId);
   return (
     <>
       <header className="topbar">

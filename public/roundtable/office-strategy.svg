@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1536 1024" role="img" aria-labelledby="title desc">
+  <title id="title">蓝图作战室</title>
+  <desc id="desc">蓝白色策略会议室，有抽象证据墙和开放的中央空间。</desc>
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#eef8ff"/><stop offset="1" stop-color="#7faee0"/></linearGradient>
+    <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#cfe5fa"/><stop offset="1" stop-color="#5b88bd"/></linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#faffff"/><stop offset="1" stop-color="#c1dcf5"/></linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%"><feDropShadow dx="0" dy="20" stdDeviation="20" flood-color="#163f73" flood-opacity=".24"/></filter>
+    <filter id="glow"><feGaussianBlur stdDeviation="14"/></filter>
+  </defs>
+  <rect width="1536" height="1024" fill="#6c9bce"/>
+  <path d="M0 0h1536v655c-286-82-520-73-768-36-260 39-500 21-768 81Z" fill="url(#wall)"/>
+  <path d="M0 652c310-58 531-38 769-6 265 36 504 14 767-35v413H0Z" fill="url(#floor)"/>
+  <ellipse cx="760" cy="894" rx="492" ry="86" fill="#254f83" opacity=".22" filter="url(#glow)"/>
+  <g filter="url(#shadow)">
+    <rect x="286" y="88" width="964" height="432" rx="64" fill="#2d66a8" opacity=".9"/>
+    <rect x="319" y="121" width="898" height="366" rx="44" fill="url(#screen)"/>
+    <g stroke="#76a9da" stroke-width="8" stroke-linecap="round" opacity=".82"><path d="m442 237 174 91 169-105 173 116 147-88"/><path d="m514 394 138-80 182 101 176-101"/></g>
+    <g fill="#fff" stroke="#92bae1" stroke-width="6"><rect x="389" y="180" width="134" height="91" rx="20"/><rect x="572" y="278" width="147" height="97" rx="20"/><rect x="743" y="164" width="155" height="97" rx="20"/><rect x="920" y="294" width="145" height="92" rx="20"/><rect x="1052" y="177" width="112" height="84" rx="20"/></g>
+    <g fill="#aacbed"><rect x="417" y="208" width="77" height="13" rx="7"/><rect x="417" y="233" width="54" height="13" rx="7"/><rect x="603" y="308" width="86" height="13" rx="7"/><rect x="603" y="335" width="58" height="13" rx="7"/><rect x="776" y="196" width="89" height="13" rx="7"/><rect x="949" y="324" width="82" height="13" rx="7"/><rect x="1080" y="205" width="57" height="13" rx="7"/></g>
+  </g>
+  <g opacity=".92" filter="url(#shadow)">
+    <rect x="42" y="211" width="185" height="418" rx="42" fill="#e9f5ff"/>
+    <rect x="73" y="253" width="123" height="74" rx="18" fill="#78a8da"/><rect x="73" y="352" width="123" height="74" rx="18" fill="#bad7ef"/><rect x="73" y="451" width="123" height="74" rx="18" fill="#97c5bd"/><rect x="73" y="550" width="123" height="38" rx="16" fill="#fff"/>
+    <rect x="1309" y="211" width="185" height="418" rx="42" fill="#e9f5ff"/>
+    <rect x="1340" y="253" width="123" height="74" rx="18" fill="#78a8da"/><rect x="1340" y="352" width="123" height="74" rx="18" fill="#bad7ef"/><rect x="1340" y="451" width="123" height="74" rx="18" fill="#97c5bd"/><rect x="1340" y="550" width="123" height="38" rx="16" fill="#fff"/>
+  </g>
+  <g fill="none" stroke="#e8f5ff" stroke-width="5" opacity=".26"><path d="M117 730c231-105 363-75 523-7 174 74 324 94 768-21"/><path d="M68 804c248-91 441-66 602 2 183 77 390 67 802-39"/></g>
+  <g fill="#d9edff" opacity=".72"><circle cx="238" cy="109" r="12"/><circle cx="1288" cy="112" r="8"/><circle cx="1370" cy="690" r="10"/></g>
+</svg>

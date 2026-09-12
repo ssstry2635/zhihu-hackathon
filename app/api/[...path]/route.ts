@@ -8,7 +8,13 @@ import {
   visitorFor,
   renameVisitor,
 } from '@/lib/server/forum';
-import { startRound, getRound, followup } from '@/lib/server/roundtable';
+import {
+  startRound,
+  getRound,
+  advanceRound,
+  followup,
+  appendUserMessage,
+} from '@/lib/server/roundtable';
 import { getZhihuConfig } from '@/lib/server/zhihu';
 import {
   startAnalysis,
@@ -89,6 +95,31 @@ async function handle(request: Request) {
         b.mode === 'mock' ? '' : stringField(b.requestId, '请求标识', 100),
         visitor.id,
         path[1],
+      );
+      response = json(result, 'jobId' in result ? 202 : 200);
+    } else if (
+      method === 'POST' &&
+      path[0] === 'analyses' &&
+      path.length === 1
+    ) {
+      const b = await body(request);
+      assert(b.mode === 'live', 'INVALID_MODE', '自由议题只支持实时采集。');
+      assert(
+        b.sourceUrl === undefined ||
+          b.sourceUrl === null ||
+          typeof b.sourceUrl === 'string',
+        'INVALID_SOURCE_URL',
+        '知乎问题链接格式不正确。',
+      );
+      const result = await startAnalysis(
+        'live',
+        stringField(b.requestId, '请求标识', 100),
+        visitor.id,
+        'custom',
+        {
+          title: stringField(b.title, '问题标题', 200),
+          sourceUrl: b.sourceUrl as string | null | undefined,
+        },
       );
       response = json(result, 'jobId' in result ? 202 : 200);
     } else if (path[0] === 'jobs' && path.length === 2 && method === 'GET') {
@@ -172,6 +203,22 @@ async function handle(request: Request) {
       response = json(await startRound(path[1], visitor.id));
     else if (path[0] === 'roundtables' && path.length === 2 && method === 'GET')
       response = json(await getRound(path[1], visitor.id));
+    else if (
+      path[0] === 'roundtables' &&
+      path[2] === 'advance' &&
+      path.length === 3 &&
+      method === 'POST'
+    )
+      response = json(await advanceRound(path[1], visitor.id));
+    else if (
+      path[0] === 'roundtables' &&
+      path[2] === 'messages' &&
+      path.length === 3 &&
+      method === 'POST'
+    )
+      response = json(
+        await appendUserMessage(path[1], visitor.id, (await body(request)).content),
+      );
     else if (
       path[0] === 'roundtables' &&
       path[2] === 'followups' &&
